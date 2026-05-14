@@ -28,12 +28,27 @@ export default function CostEstimator() {
   const [agreement, setAgreement] = useState("agrees"); // "agrees" | "declines"
 
   // --- Role & Totals ---
-  const [currentRole, setCurrentRole] = useState("pharma"); // "pharma" | "nurse"
+  const [currentRole, setCurrentRole] = useState(() => {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    return (user.role === 'nurse' ? 'nurse' : 'pharma');
+  });
+  const isAdmin = JSON.parse(localStorage.getItem('user') || '{}').role === 'admin'; // "pharma" | "nurse"
 
   // Search & Items
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [selectedItems, setSelectedItems] = useState([]);
+
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const userRole = user.role;
+
+  const handleRoleSwitch = (newRole) => {
+    if (isAdmin || newRole === userRole) {
+      setCurrentRole(newRole);
+    } else {
+      toast.warning("เข้าถึงไม่ได้", `คุณลงชื่อเข้าใช้ในฐานะ${userRole === 'nurse' ? 'พยาบาล' : 'เภสัชกร'} จึงไม่สามารถสลับไปส่วนงานอื่นได้ครับ`);
+    }
+  };
 
   // Master Data
   const [doctors, setDoctors] = useState([]);
@@ -90,19 +105,21 @@ export default function CostEstimator() {
     return item[billingRight] || item["OPD"] || 0;
   };
 
-  // Filter items into Drugs and Prep for the summary
-  const drugItems = selectedItems.filter(i => !i.isPreparation);
-  const prepItems = selectedItems.filter(i => i.isPreparation);
+  // --- Main Calculation Engine ---
+  const drugItemsOnly = selectedItems.filter(i => (i.category === 'pharma' || !i.category) && !i.isPreparation);
+  const nurseItemsOnly = selectedItems.filter(i => i.category === 'nurse' && !i.isPreparation);
+  const prepItemsOnly = selectedItems.filter(i => i.isPreparation);
 
-  const drugTotal = drugItems.reduce((s, i) => s + getPrice(i) * i.quantity, 0);
-  const prepTotal = prepItems.reduce((s, i) => s + getPrice(i) * i.quantity, 0);
-  const grandTotal = drugTotal + prepTotal;
+  const drugTotal = drugItemsOnly.reduce((s, i) => s + getPrice(i) * i.quantity, 0);
+  const nurseTotal = nurseItemsOnly.reduce((s, i) => s + getPrice(i) * i.quantity, 0);
+  const prepTotal = prepItemsOnly.reduce((s, i) => s + getPrice(i) * i.quantity, 0);
+
+  const pharmaTotal = drugTotal; // Medications are pharma
+  const grandTotal = drugTotal + nurseTotal + prepTotal;
   const totalCourse = grandTotal * courseCycles;
 
-  const pharmaItems = selectedItems.filter(i => i.category === "pharma");
+  const pharmaItems = selectedItems.filter(i => i.category === "pharma" || !i.category);
   const nurseItems = selectedItems.filter(i => i.category === "nurse");
-  const pharmaTotal = pharmaItems.reduce((s, i) => s + getPrice(i) * i.quantity, 0);
-  const nurseTotal = nurseItems.reduce((s, i) => s + getPrice(i) * i.quantity, 0);
 
   const fmt = (v) => new Intl.NumberFormat("th-TH", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(v);
 
@@ -134,9 +151,17 @@ export default function CostEstimator() {
   const removeGroup = (gid) => setSelectedItems(prev => prev.filter(i => i.setInstanceId !== gid));
 
   const renderTable = (items, t) => {
+    // Sort items so sets stay together
+    const sortedItems = [...items].sort((a, b) => {
+      if (a.setInstanceId && b.setInstanceId) return a.setInstanceId.localeCompare(b.setInstanceId);
+      if (a.setInstanceId) return -1;
+      if (b.setInstanceId) return 1;
+      return 0;
+    });
+
     const groups = [];
     let currentGid = null;
-    items.forEach(item => {
+    sortedItems.forEach(item => {
       if (item.setInstanceId) {
         if (item.setInstanceId !== currentGid) {
           groups.push({ isGroupHeader: true, gid: item.setInstanceId, name: item.parentSetName, qty: item.quantity });
@@ -242,27 +267,29 @@ export default function CostEstimator() {
         if (latest) {
           // Merge items from the OTHER role to prevent overwriting
           if (currentRole === "pharma") {
-            const latestNurse = latest.selectedItems.filter(i => i.category === "nurse" || i.isPreparation);
-            const myPharma = selectedItems.filter(i => i.category === "pharma" || (!i.isPreparation && i.category !== "nurse"));
+            // I am pharma: Take my pharma items, keep nurse items from DB
+            const latestNurse = latest.selectedItems.filter(i => i.category === "nurse");
+            const myPharma = selectedItems.filter(i => i.category === "pharma" || !i.category);
             finalItems = [...myPharma, ...latestNurse];
           } else {
-            const latestPharma = latest.selectedItems.filter(i => i.category === "pharma" || (!i.isPreparation && i.category !== "nurse"));
-            const myNurse = selectedItems.filter(i => i.category === "nurse" || i.isPreparation);
+            // I am nurse: Take my nurse items, keep pharma items from DB
+            const latestPharma = latest.selectedItems.filter(i => i.category === "pharma" || !i.category);
+            const myNurse = selectedItems.filter(i => i.category === "nurse");
             finalItems = [...latestPharma, ...myNurse];
           }
         }
       }
 
       // --- Smart Status Logic ---
-      const hasPharma = finalItems.some(i => i.category === "pharma" || (!i.isPreparation && i.category !== "nurse"));
-      const hasNurse = finalItems.some(i => i.category === "nurse" || i.isPreparation);
+      const hasPharma = finalItems.some(i => i.category === "pharma" || !i.category);
+      const hasNurse = finalItems.some(i => i.category === "nurse");
       const status = (hasPharma && hasNurse) ? "สมบูรณ์" : (hasPharma ? "รอพยาบาล" : "รอเภสัช");
 
-      // Recalculate totals based on merged items
-      const pTotal = finalItems.filter(i => i.category === "pharma").reduce((s, i) => s + getPrice(i) * i.quantity, 0);
-      const nTotal = finalItems.filter(i => i.category === "nurse").reduce((s, i) => s + getPrice(i) * i.quantity, 0);
+      // Recalculate totals based on merged items (Strictly by category)
+      const pTotal = finalItems.filter(i => (i.category === "pharma" || !i.category) && !i.isPreparation).reduce((s, i) => s + getPrice(i) * i.quantity, 0);
+      const nTotal = finalItems.filter(i => i.category === "nurse" && !i.isPreparation).reduce((s, i) => s + getPrice(i) * i.quantity, 0);
       const prpTotal = finalItems.filter(i => i.isPreparation).reduce((s, i) => s + getPrice(i) * i.quantity, 0);
-      const gTotal = pTotal + nTotal;
+      const gTotal = pTotal + nTotal + prpTotal;
 
       const record = {
         id: recordId,
@@ -318,10 +345,16 @@ export default function CostEstimator() {
           {/* Role Switcher */}
           <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-1 rounded-2xl shadow-lg">
             <div className="flex bg-white/10 rounded-xl overflow-hidden backdrop-blur-sm">
-              <button onClick={() => setCurrentRole("pharma")} className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-black transition-all ${currentRole === "pharma" ? "bg-white text-blue-700 shadow-xl" : "text-white hover:bg-white/5"}`}>
+              <button 
+                onClick={() => handleRoleSwitch("pharma")} 
+                className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-black transition-all ${currentRole === "pharma" ? "bg-white text-blue-700 shadow-xl" : "text-white/60 hover:bg-white/5"} ${(!isAdmin && userRole === 'nurse') ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
                 <Pill size={18} /> เภสัชกร
               </button>
-              <button onClick={() => setCurrentRole("nurse")} className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-black transition-all ${currentRole === "nurse" ? "bg-white text-indigo-700 shadow-xl" : "text-white hover:bg-white/5"}`}>
+              <button 
+                onClick={() => handleRoleSwitch("nurse")} 
+                className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-black transition-all ${currentRole === "nurse" ? "bg-white text-indigo-700 shadow-xl" : "text-white/60 hover:bg-white/5"} ${(!isAdmin && userRole === 'pharma') ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
                 <Stethoscope size={18} /> พยาบาล
               </button>
             </div>

@@ -210,7 +210,7 @@ export default function PatientRecords() {
                       <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-blue-600 shadow-sm"><Pill size={20} /></div>
                       <div>
                         <div className="text-[0.6rem] font-black text-blue-400 uppercase tracking-tighter">ส่วนงานเภสัชกรรม</div>
-                        <div className="text-xs font-bold text-slate-700">{selectedRecord.selectedItems?.filter(i => i.category === "pharma" || (!i.isPreparation && i.category !== "nurse")).length || 0} รายการ</div>
+                        <div className="text-xs font-bold text-slate-700">{selectedRecord.selectedItems?.filter(i => i.category === "pharma" || !i.category).length || 0} รายการ</div>
                       </div>
                     </div>
                     <div className="text-right">
@@ -223,7 +223,7 @@ export default function PatientRecords() {
                       <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-indigo-600 shadow-sm"><Stethoscope size={20} /></div>
                       <div>
                         <div className="text-[0.6rem] font-black text-indigo-400 uppercase tracking-tighter">ส่วนงานพยาบาลและบริการ</div>
-                        <div className="text-xs font-bold text-slate-700">{selectedRecord.selectedItems?.filter(i => i.category === "nurse" || i.isPreparation).length || 0} รายการ</div>
+                        <div className="text-xs font-bold text-slate-700">{selectedRecord.selectedItems?.filter(i => i.category === "nurse").length || 0} รายการ</div>
                       </div>
                     </div>
                     <div className="text-right">
@@ -288,7 +288,7 @@ export default function PatientRecords() {
                   <Pill size={14} /> รายการยาและเวชภัณฑ์
                 </h4>
                 <div className="divide-y border rounded-2xl overflow-hidden">
-                  {selectedRecord.selectedItems?.filter(i => i.category === "pharma" || (!i.isPreparation && i.category !== "nurse")).map(item => (
+                  {selectedRecord.selectedItems?.filter(i => i.category === "pharma" || !i.category).map(item => (
                     <div key={item.id} className="p-3 flex justify-between items-center bg-white">
                       <div>
                         <div className="font-bold text-slate-800 text-sm">{item.Common_name}</div>
@@ -308,7 +308,7 @@ export default function PatientRecords() {
                   <Stethoscope size={14} /> รายการพยาบาลและค่าบริการ
                 </h4>
                 <div className="divide-y border rounded-2xl overflow-hidden">
-                  {selectedRecord.selectedItems?.filter(i => i.category === "nurse" || i.isPreparation).map(item => (
+                  {selectedRecord.selectedItems?.filter(i => i.category === "nurse").map(item => (
                     <div key={item.id} className="p-3 flex justify-between items-center bg-white">
                       <div>
                         <div className="font-bold text-slate-800 text-sm">{item.Common_name}</div>

@@ -7,19 +7,19 @@ export const useToast = () => useContext(ToastContext);
 export const ToastProvider = ({ children }) => {
   const [toasts, setToasts] = useState([]);
 
-  const show = (message, type = 'info') => {
+  const show = (message, title = '', type = 'info') => {
     const id = Date.now();
-    setToasts((prev) => [...prev, { id, message, type }]);
+    setToasts((prev) => [...prev, { id, message, title, type }]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 3000);
   };
 
   const toast = {
-    success: (msg) => show(msg, 'success'),
-    error: (msg) => show(msg, 'error'),
-    info: (msg) => show(msg, 'info'),
-    warning: (msg) => show(msg, 'warning'),
+    success: (msg, title) => show(msg, title, 'success'),
+    error: (msg, title) => show(msg, title, 'error'),
+    info: (msg, title) => show(msg, title, 'info'),
+    warning: (msg, title) => show(msg, title, 'warning'),
   };
 
   return (
