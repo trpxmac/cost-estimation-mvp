@@ -215,13 +215,20 @@ export default function CostEstimator() {
             return (
               <tr key={i.id} className={`border-b border-slate-50 hover:bg-slate-50/30 transition-colors ${i.setInstanceId ? 'bg-indigo-50/10' : ''}`}>
                 <td className={`py-2 ${i.setInstanceId ? 'pl-8' : 'px-2'}`}>
-                  <div className="font-bold text-slate-800 text-[0.7rem]">{i.Common_name}</div>
+                  <div className="font-bold text-slate-800 text-[0.7rem]">
+                    {i.Common_name}
+                    {i.stock !== undefined && (
+                      <span className={`ml-1 font-semibold ${i.stock <= 5 ? 'text-rose-500' : 'text-slate-400'}`}>
+                        (คงคลัง: {i.stock})
+                      </span>
+                    )}
+                  </div>
                   <div className="text-[0.55rem] text-slate-400 font-mono no-print">{i.itemCode}</div>
                 </td>
                 <td className="py-2 text-center">
-                  <input 
-                    type="text" 
-                    value={i.dose || ""} 
+                  <input
+                    type="text"
+                    value={i.dose || ""}
                     onChange={(e) => updateDose(i.id, e.target.value)}
                     placeholder="-"
                     className="w-full text-center bg-transparent border-b border-transparent focus:border-blue-300 focus:outline-none text-[0.7rem] font-bold text-blue-600 no-print"
@@ -260,7 +267,7 @@ export default function CostEstimator() {
     try {
       let finalItems = [...selectedItems];
       const recordId = editingId || Date.now().toString();
-      
+
       // --- Concurrency Merge Logic ---
       if (editingId) {
         const latest = await getEstimationById(editingId);
@@ -295,9 +302,9 @@ export default function CostEstimator() {
         id: recordId,
         savedAt: new Date().toISOString(),
         hn, vnan, patientName, doctorName, diagnosis, assessor, bsa,
-        patientType, billingRight, insurance, agreement, 
-        prepFeeTotal: prpTotal, 
-        courseCycles, 
+        patientType, billingRight, insurance, agreement,
+        prepFeeTotal: prpTotal,
+        courseCycles,
         selectedItems: finalItems,
         pharmaTotal: pTotal, nurseTotal: nTotal, grandTotal: gTotal, totalCourse: gTotal * courseCycles,
         status,
@@ -308,7 +315,7 @@ export default function CostEstimator() {
       else await saveEstimation(record);
 
       toast.success(status === "สมบูรณ์" ? "บันทึกข้อมูลสมบูรณ์" : `บันทึกแล้ว (${status})`);
-      
+
       if (!isSilent) {
         if (!editingId) navigate("/patients");
         else setSelectedItems(finalItems);
@@ -317,8 +324,8 @@ export default function CostEstimator() {
         setSelectedItems(finalItems);
       }
       return recordId;
-    } catch (e) { 
-      toast.error("เกิดข้อผิดพลาด"); 
+    } catch (e) {
+      toast.error("เกิดข้อผิดพลาด");
       return null;
     }
   };
@@ -345,14 +352,14 @@ export default function CostEstimator() {
           {/* Role Switcher */}
           <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-1 rounded-2xl shadow-lg">
             <div className="flex bg-white/10 rounded-xl overflow-hidden backdrop-blur-sm">
-              <button 
-                onClick={() => handleRoleSwitch("pharma")} 
+              <button
+                onClick={() => handleRoleSwitch("pharma")}
                 className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-black transition-all ${currentRole === "pharma" ? "bg-white text-blue-700 shadow-xl" : "text-white/60 hover:bg-white/5"} ${(!isAdmin && userRole === 'nurse') ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <Pill size={18} /> เภสัชกร
               </button>
-              <button 
-                onClick={() => handleRoleSwitch("nurse")} 
+              <button
+                onClick={() => handleRoleSwitch("nurse")}
                 className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-black transition-all ${currentRole === "nurse" ? "bg-white text-indigo-700 shadow-xl" : "text-white/60 hover:bg-white/5"} ${(!isAdmin && userRole === 'pharma') ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <Stethoscope size={18} /> พยาบาล
@@ -388,7 +395,7 @@ export default function CostEstimator() {
               {/* ปรับแก้ 1: เพิ่มสิทธิที่ใช้ (Insurance) ตรงนี้ */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={lblCls}>ประเภทราคา (Pricing Right)</label>
+                  <label className={lblCls}>อัตราราคา price tariff</label>
                   <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-lg">
                     {["OPD", "IPD", "OPDTR", "IPDTR"].map(r => (
                       <button key={r} onClick={() => setBillingRight(r)} className={`py-1 rounded text-[0.6rem] font-black transition-all ${billingRight === r ? "bg-white text-blue-700 shadow-sm" : "text-slate-400"}`}>{r}</button>
@@ -396,7 +403,7 @@ export default function CostEstimator() {
                   </div>
                 </div>
                 <div>
-                  <label className={lblCls}>สิทธิที่ใช้ (Insurance)</label>
+                  <label className={lblCls}>สิทธิการรักษา</label>
                   <select className={inputCls} value={insurance} onChange={e => setInsurance(e.target.value)}>
                     <option value="Self pay">Self pay</option>
                     <option value="ประกันไทย">ประกันไทย</option>
@@ -412,7 +419,7 @@ export default function CostEstimator() {
                 <div>
                   <div className="flex justify-between items-center mb-1">
                     <label className={lblCls}>Diagnosis</label>
-                    <button 
+                    <button
                       onClick={async () => {
                         const name = window.prompt("ระบุชื่อโรค/Diagnosis ใหม่:");
                         if (name) {
@@ -464,7 +471,7 @@ export default function CostEstimator() {
               <h2 className="text-[0.65rem] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                 <Search size={14} /> ค้นหารายการละเอียด ({currentRole === "pharma" ? "ยา" : "ค่าบริการ"})
               </h2>
-              <button 
+              <button
                 onClick={() => navigate('/add-item', { state: { fromEstimator: true } })}
                 className="text-[0.6rem] font-black text-rose-600 bg-rose-50 px-2 py-1 rounded-md hover:bg-rose-100 flex items-center gap-1 transition-colors"
               >
@@ -481,6 +488,11 @@ export default function CostEstimator() {
                       <div className="flex-1 pr-4">
                         <div className="font-bold text-slate-800 text-xs">
                           {item.Common_name}
+                          {item.stock !== undefined && (
+                            <span className={`ml-1.5 text-[0.6rem] font-semibold ${item.stock <= 5 ? 'text-rose-500' : 'text-slate-400'}`}>
+                              (คงคลัง: {item.stock})
+                            </span>
+                          )}
                           {item.isSet && <span className="ml-2 px-1.5 py-0.5 bg-indigo-100 text-indigo-600 rounded text-[0.5rem] font-black uppercase tracking-tighter">ITEM SET</span>}
                         </div>
                         <div className="text-[0.55rem] text-slate-400 font-mono">{item.itemCode}</div>
@@ -521,7 +533,7 @@ export default function CostEstimator() {
               <div className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400">ผู้ประเมิน:</span><span className="font-black">{assessor || "-"}</span></div>
               <div className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400">แพทย์:</span><span className="font-black">{doctorName || "-"}</span></div>
               <div className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400">Diagnosis:</span><span className="font-black">{diagnosis || "-"}</span></div>
-              <div className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400">สิทธิที่ใช้:</span><span className="font-black">{insurance}</span></div>
+              <div className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400">สิทธิการรักษา:</span><span className="font-black">{insurance}</span></div>
               <div className="flex justify-between border-b border-slate-50 pb-1">
                 <span className="text-slate-400">การตกลงรักษา:</span>
                 <span className={`font-black ${agreement === "agrees" ? "text-green-600" : "text-red-500"}`}>{agreement === "agrees" ? "ตกลงรักษา" : "ไม่ตกลง"}</span>
@@ -595,4 +607,4 @@ export default function CostEstimator() {
     </>
   );
 }
-
+

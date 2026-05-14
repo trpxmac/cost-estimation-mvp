@@ -118,7 +118,11 @@ export default function DrugPrices() {
                   onClick={() => handleSort('Common_name')}>
                   Medication <SortIcon col="Common_name" />
                 </th>
-                <th className="p-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide w-[50px]">Type</th>
+                <th className="p-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide w-[50px]">Type</th>
+                <th className="p-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide cursor-pointer hover:text-slate-800"
+                  onClick={() => handleSort('stock')}>
+                  Stock <SortIcon col="stock" />
+                </th>
                 {TYPES.map(t => (
                   <th key={t} className="p-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide cursor-pointer hover:text-slate-800"
                     onClick={() => handleSort(t)}>
@@ -131,7 +135,7 @@ export default function DrugPrices() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-14 text-slate-400">
+                  <td colSpan={9} className="text-center py-14 text-slate-400">
                     <Search size={36} className="opacity-20 mx-auto mb-2" />
                     <p className="text-sm">No items found</p>
                   </td>
@@ -148,6 +152,15 @@ export default function DrugPrices() {
                       ? <span className="text-[0.65rem] px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full font-semibold">Item Set</span>
                       : <span className="text-[0.65rem] px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-semibold">Drug</span>
                     }
+                  </td>
+                  <td className="p-3 text-center">
+                    {item.stock !== undefined ? (
+                      <span className={`font-black ${item.stock <= 5 ? 'text-rose-500' : 'text-slate-700'}`}>
+                        {item.stock}
+                      </span>
+                    ) : (
+                      <span className="text-slate-300">-</span>
+                    )}
                   </td>
                   {TYPES.map(t => {
                     const val = item.isSet && item.items 

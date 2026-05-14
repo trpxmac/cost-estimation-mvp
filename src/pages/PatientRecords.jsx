@@ -117,7 +117,7 @@ export default function PatientRecords() {
                 <tr>
                   <th className="p-4 text-left font-bold text-slate-500">HN</th>
                   <th className="p-4 text-left font-bold text-slate-500">ชื่อ-นามสกุล</th>
-                  <th className="p-4 text-left font-bold text-slate-500">ประเภท</th>
+                  <th className="p-4 text-left font-bold text-slate-500">สัญชาติ</th>
                   <th className="p-4 text-left font-bold text-slate-500">จัดการ</th>
                 </tr>
               </thead>
@@ -131,7 +131,7 @@ export default function PatientRecords() {
                     </td>
                     <td className="p-4">
                       <span className={`px-2.5 py-1 rounded-full text-[0.7rem] font-black uppercase ${p.nationality === 'THAI' ? 'bg-sky-100 text-sky-700' : 'bg-amber-100 text-amber-700'}`}>
-                        {p.type} • {p.nationality === 'THAI' ? 'ไทย' : 'ต่างชาติ'}
+                        {p.nationality === 'THAI' ? 'ไทย' : 'ต่างชาติ'}
                       </span>
                     </td>
                     <td className="p-4">
@@ -169,7 +169,7 @@ export default function PatientRecords() {
                       }`}>
                         {r.status || "รอตรวจสอบ"}
                       </span>
-                      <span className="text-[0.55rem] text-slate-400 font-bold uppercase">{r.patientType} • {r.billingRight}</span>
+                      <span className="text-[0.55rem] text-slate-400 font-bold uppercase">ประวัติการประเมิน</span>
                     </div>
                   </div>
                 </div>
@@ -185,8 +185,7 @@ export default function PatientRecords() {
                     <h3 className="font-black text-lg text-[#0F294D]">{selectedRecord.patientName}</h3>
                     <div className="text-sm text-slate-500">HN: {selectedRecord.hn} • แพทย์: {selectedRecord.doctorName}</div>
                     <div className="flex gap-2 mt-3">
-                      <span className="text-[0.65rem] px-2.5 py-1 bg-blue-100 text-blue-800 rounded font-black uppercase">{selectedRecord.patientType}</span>
-                      <span className="text-[0.65rem] px-2.5 py-1 bg-purple-100 text-purple-800 rounded font-black uppercase">{selectedRecord.billingRight}</span>
+
                       <span className={`text-[0.65rem] px-2.5 py-1 rounded font-black uppercase border ${
                         selectedRecord.status === "สมบูรณ์" ? "bg-green-100 text-green-700 border-green-200" :
                         selectedRecord.status === "รอพยาบาล" ? "bg-blue-100 text-blue-700 border-blue-200" :

@@ -97,6 +97,9 @@ export async function addNewDrug(drugData) {
     TYPE4_OPDTR: Number(drugData.TYPE4_OPDTR) || Number(drugData.OPDTR) || 0,
     TYPE4_IPDTR: Number(drugData.TYPE4_IPDTR) || Number(drugData.IPDTR) || 0,
     category: drugData.category || 'pharma',
+    stock: drugData.stock !== undefined ? Number(drugData.stock) : 50,
+    isSet: !!drugData.isSet,
+    items: drugData.items,
     isPreparation: drugData.category === 'nurse',
     addedAt: new Date().toISOString(),
   };

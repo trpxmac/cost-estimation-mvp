@@ -3,18 +3,80 @@ import { useNavigate } from 'react-router-dom';
 import { getEstimations } from '../api';
 import {
   Calculator, Users, TrendingUp, FileText,
-  ArrowRight, Clock, Activity, DollarSign, Pill, ShieldCheck, CheckCircle2, ChevronRight
+  Clock, Activity, DollarSign, ShieldCheck, CheckCircle2, ChevronRight, AlertTriangle, Stethoscope, UserRound, Truck, Check
 } from 'lucide-react';
 import { 
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  PieChart, Pie, Cell, BarChart, Bar, Legend
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+  PieChart, Pie, Cell, Legend
 } from 'recharts';
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const [records, setRecords] = useState([]);
+  const [items, setItems] = useState([]);
+  const [alertDays, setAlertDays] = useState(() => {
+    return Number(localStorage.getItem('stock_alert_days') || 5);
+  });
+  const [orderedItems, setOrderedItems] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('ordered_stock_items')) || {};
+    } catch {
+      return {};
+    }
+  });
 
-  useEffect(() => { getEstimations().then(setRecords); }, []);
+  useEffect(() => { 
+    getEstimations().then(setRecords); 
+    import('../data').then(m => setItems(m.getAllItems()));
+  }, []);
+
+  const handleAlertDaysChange = (days) => {
+    setAlertDays(days);
+    localStorage.setItem('stock_alert_days', days);
+  };
+
+  const handleMarkOrdered = (code) => {
+    setOrderedItems(prev => {
+      const next = { ...prev, [code]: true };
+      localStorage.setItem('ordered_stock_items', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const stockAlerts = useMemo(() => {
+    const itemReq = {};
+    records.forEach(r => {
+      (r.selectedItems || []).forEach(item => {
+        const code = item.itemCode;
+        if (!itemReq[code]) {
+          itemReq[code] = { code, name: item.Common_name, needed: 0 };
+        }
+        itemReq[code].needed += (item.quantity || 1) * (r.courseCycles || 1);
+      });
+    });
+
+    const alerts = [];
+    items.forEach(invItem => {
+      if (invItem.isSet) return;
+      const baseNeeded = itemReq[invItem.itemCode]?.needed || (invItem.stock !== undefined && invItem.stock <= 5 ? invItem.stock + 4 : 0);
+      const currentStock = invItem.stock !== undefined ? invItem.stock : 50;
+      
+      if (baseNeeded > 0) {
+        const scaledNeeded = Math.round(baseNeeded * (alertDays / 5));
+        if (scaledNeeded > currentStock) {
+          alerts.push({
+            code: invItem.itemCode,
+            name: invItem.Common_name,
+            stock: currentStock,
+            needed: scaledNeeded,
+            shortage: scaledNeeded - currentStock
+          });
+        }
+      }
+    });
+
+    return alerts;
+  }, [records, items, alertDays]);
 
   const formatCurrency = (val) =>
     new Intl.NumberFormat('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(val ?? 0);
@@ -37,25 +99,6 @@ export default function Dashboard() {
     { label: 'มูลค่ารวมทั้งหมด', value: formatCurrency(totalValue), unit: 'บาท', icon: <DollarSign size={22} />, color: 'bg-yellow-100 text-yellow-600', border: 'border-yellow-200' },
     { label: 'มูลค่าเฉลี่ยต่อราย', value: formatCurrency(avgValue), unit: 'บาท', icon: <TrendingUp size={22} />, color: 'bg-purple-100 text-purple-600', border: 'border-purple-200' },
   ];
-
-  // --- Data Transformation for Charts ---
-  
-  // 1. Trend Data (Last 7 Days)
-  const trendData = useMemo(() => {
-    const last7Days = [...Array(7)].map((_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - (6 - i));
-      return d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' });
-    });
-    
-    const dayMap = {};
-    records.forEach(r => {
-      const dateKey = new Date(r.savedAt).toLocaleDateString('th-TH', { day: '2-digit', month: 'short' });
-      dayMap[dateKey] = (dayMap[dateKey] || 0) + (r.totalCourse || 0);
-    });
-
-    return last7Days.map(date => ({ date, total: dayMap[date] || 0 }));
-  }, [records]);
 
   // 2. Patient Type Donut Data
   const patientTypeData = useMemo(() => {
@@ -90,19 +133,42 @@ export default function Dashboard() {
     ].filter(i => i.value > 0);
   }, [records]);
 
-  // 5. Top Medications Bar Data
-  const topMedications = useMemo(() => {
-    const drugMap = {};
+  // 5. Doctor Stats
+  const doctorStats = useMemo(() => {
+    const counts = {};
+    const docDiags = {};
+
     records.forEach(r => {
-      (r.selectedItems || []).forEach(item => {
-        if (!drugMap[item.Common_name]) {
-          drugMap[item.Common_name] = { name: item.Common_name, count: 0 };
-        }
-        drugMap[item.Common_name].count += 1;
-      });
+      const k = r.doctorName || 'ไม่ระบุ';
+      counts[k] = (counts[k] || 0) + 1;
+
+      if (!docDiags[k]) docDiags[k] = {};
+      const diag = r.diagnosis || 'ไม่ระบุ';
+      docDiags[k][diag] = (docDiags[k][diag] || 0) + 1;
     });
-    return Object.values(drugMap)
-      .sort((a, b) => b.count - a.count)
+
+    return Object.entries(counts)
+      .map(([name, value]) => {
+        const topDiagnoses = Object.entries(docDiags[name] || {})
+          .map(([dName, dCount]) => ({ name: dName, count: dCount }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 3);
+        return { name, value, topDiagnoses };
+      })
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
+  }, [records]);
+
+  // 6. Diagnosis Stats
+  const diagnosisStats = useMemo(() => {
+    const counts = records.reduce((acc, r) => {
+      const k = r.diagnosis || 'ไม่ระบุ';
+      acc[k] = (acc[k] || 0) + 1;
+      return acc;
+    }, {});
+    return Object.entries(counts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
       .slice(0, 5);
   }, [records]);
 
@@ -150,80 +216,74 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Top Trend Chart */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-6 mb-6 shadow-sm overflow-hidden">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="font-black text-slate-900 flex items-center gap-2">
-            <TrendingUp size={18} className="text-blue-600" /> แนวโน้มมูลค่าการประเมินราคา (7 วันล่าสุด)
-          </h2>
+      {/* Low Stock & Order Alerts Panel */}
+      <div className="bg-white border border-rose-200 rounded-3xl p-6 mb-6 shadow-sm overflow-hidden relative">
+        <div className="absolute top-0 left-0 w-1.5 h-full bg-rose-500"></div>
+        <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-6">
+          <div>
+            <h2 className="font-black text-slate-900 flex items-center gap-2 text-base">
+              <AlertTriangle size={18} className="text-rose-600 animate-pulse" /> ระบบแจ้งเตือนสต็อกยาและการสั่งซื้อ (Low Stock / Order Alerts)
+            </h2>
+            <p className="text-xs text-slate-500 mt-1">
+              แสดงรายการยาที่ปริมาณความต้องการใช้สูงกว่าสต็อกคงเหลือ เพื่อวางแผนจัดซื้อล่วงหน้า
+            </p>
+          </div>
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl p-1.5 self-start md:self-auto">
+            <span className="text-[0.65rem] font-bold text-slate-500 px-2 uppercase tracking-tighter">เตือนล่วงหน้า:</span>
+            {[3, 5, 7].map(days => (
+              <button
+                key={days}
+                onClick={() => handleAlertDaysChange(days)}
+                className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${alertDays === days ? 'bg-rose-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'}`}
+              >
+                {days} วัน
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="h-[250px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={trendData}>
-              <defs>
-                <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.1}/>
-                  <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} dy={10} />
-              <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} tickFormatter={(v) => v >= 1000 ? `${v/1000}k` : v} />
-              <Tooltip 
-                contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                formatter={(val) => [formatCurrency(val) + " บาท", "ยอดรวม"]}
-              />
-              <Area 
-                type="monotone" 
-                dataKey="total" 
-                stroke="#3B82F6" 
-                strokeWidth={4} 
-                fillOpacity={1} 
-                fill="url(#colorTotal)" 
-                isAnimationActive={true}
-                animationDuration={2000}
-                animationEasing="ease-out"
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+
+        {stockAlerts.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {stockAlerts.map(alert => (
+              <div key={alert.code} className="bg-rose-50/40 border border-rose-100 rounded-2xl p-4 flex justify-between items-center hover:bg-rose-50/80 transition-colors">
+                <div className="flex-1 pr-3">
+                  <div className="font-bold text-slate-900 text-xs line-clamp-1">{alert.name}</div>
+                  <div className="text-[0.6rem] text-slate-400 font-mono mt-0.5">{alert.code}</div>
+                  <div className="flex gap-3 mt-2 text-[0.65rem]">
+                    <span className="text-slate-600">สต็อกคงเหลือ: <strong className="text-slate-900">{alert.stock}</strong></span>
+                    <span className="text-slate-600">ต้องใช้: <strong className="text-rose-600">{alert.needed}</strong></span>
+                  </div>
+                </div>
+                <div className="text-right flex flex-col items-end justify-center">
+                  {orderedItems[alert.code] ? (
+                    <button 
+                      disabled
+                      className="flex items-center gap-1.5 bg-amber-100 text-amber-800 font-black text-[0.65rem] px-3 py-1.5 rounded-full border border-amber-200 cursor-not-allowed shadow-none"
+                    >
+                      <Check size={12} className="text-amber-700 stroke-[3]" /> สั่งซื้อแล้ว (Pending)
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={() => handleMarkOrdered(alert.code)}
+                      className="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-[0.65rem] px-3 py-1.5 rounded-full shadow-sm transition-all duration-150"
+                    >
+                      <Truck size={12} /> สั่งเพิ่ม +{alert.shortage}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-6 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+            <span className="text-xs font-bold text-slate-400">✅ สต็อกยาเพียงพอสำหรับการใช้งานในช่วง {alertDays} วันข้างหน้า</span>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        
-        {/* Top 5 Meds - Horizontal Bar Chart */}
-        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="font-black text-slate-900 flex items-center gap-2">
-              <Pill size={18} className="text-rose-600" /> ยาที่ใช้บ่อยที่สุด (Top 5)
-            </h2>
-          </div>
-          <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={topMedications} layout="vertical" margin={{ left: 50 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                <XAxis type="number" hide />
-                <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 11}} width={120} />
-                <Tooltip 
-                  cursor={{fill: '#f8fafc'}}
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                />
-                <Bar 
-                  dataKey="count" 
-                  fill="#FB7185" 
-                  radius={[0, 4, 4, 0]} 
-                  maxBarSize={30}
-                  isAnimationActive={true}
-                  animationDuration={1500}
-                  animationEasing="ease-out"
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
         {/* Proportions Section */}
-        <div className="space-y-6">
+        <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Patient Type Donut */}
           <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm h-[200px] flex flex-col justify-between">
             <h2 className="text-[0.7rem] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
@@ -290,8 +350,68 @@ export default function Dashboard() {
         </div>
       </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        {/* Top Doctors */}
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+          <h2 className="font-black text-slate-900 mb-6 flex items-center gap-2">
+            <UserRound size={18} className="text-indigo-600" /> สถิติแพทย์ (Top 5)
+          </h2>
+          <div className="space-y-4">
+            {doctorStats.length > 0 ? doctorStats.map((item, i) => (
+              <div key={i} className="relative pt-1 group cursor-pointer">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold text-slate-700 border-b border-dashed border-slate-300 group-hover:text-indigo-600 transition-colors">
+                    {item.name}
+                  </span>
+                  <span className="text-xs font-black text-indigo-600">{item.value} ราย</span>
+                </div>
+                <div className="overflow-hidden h-1.5 text-xs flex rounded-full bg-indigo-50">
+                  <div style={{ width: `${(item.value / doctorStats[0].value) * 100}%` }} className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-indigo-500 rounded-full transition-all duration-1000"></div>
+                </div>
+
+                {/* Premium Tailwind Hover Tooltip */}
+                {item.topDiagnoses && item.topDiagnoses.length > 0 && (
+                  <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block w-max max-w-xs bg-[#0F294D] text-white text-[0.65rem] rounded-xl p-3 shadow-xl z-50 animate-in fade-in duration-150 border border-white/10">
+                    <div className="font-black text-indigo-300 mb-1.5 pb-1 border-b border-white/10">การวินิจฉัยหลักของแพทย์ท่านนี้:</div>
+                    <div className="space-y-1 text-slate-200">
+                      {item.topDiagnoses.map((d, di) => (
+                        <div key={di} className="flex justify-between gap-6">
+                          <span className="truncate max-w-[160px]">{d.name}</span>
+                          <span className="font-bold text-white font-mono">{d.count} ครั้ง</span>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Arrow */}
+                    <div className="absolute left-4 top-full w-2 h-2 bg-[#0F294D] rotate-45 -mt-1 border-r border-b border-white/10"></div>
+                  </div>
+                )}
+              </div>
+            )) : <div className="text-center py-10 text-slate-300 text-xs font-bold">ไม่มีข้อมูลสถิติแพทย์</div>}
+          </div>
+        </div>
+
+        {/* Top Diagnoses */}
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+          <h2 className="font-black text-slate-900 mb-6 flex items-center gap-2">
+            <Stethoscope size={18} className="text-blue-600" /> การวินิจฉัย (Top 5)
+          </h2>
+          <div className="space-y-4">
+            {diagnosisStats.length > 0 ? diagnosisStats.map((item, i) => (
+              <div key={i} className="relative pt-1">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold text-slate-700">{item.name}</span>
+                  <span className="text-xs font-black text-blue-600">{item.value} ราย</span>
+                </div>
+                <div className="overflow-hidden h-1.5 text-xs flex rounded-full bg-blue-50">
+                  <div style={{ width: `${(item.value / diagnosisStats[0].value) * 100}%` }} className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-blue-500 rounded-full transition-all duration-1000"></div>
+                </div>
+              </div>
+            )) : <div className="text-center py-10 text-slate-300 text-xs font-bold">ไม่มีข้อมูลสถิติการวินิจฉัย</div>}
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
         {/* Insurance Proportions */}
         <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm overflow-hidden">
           <h2 className="font-black text-slate-900 mb-6 flex items-center gap-2">

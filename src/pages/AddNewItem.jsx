@@ -18,6 +18,7 @@ export default function AddNewItem() {
   const [drugCode, setDrugCode] = useState('');
   const [drugName, setDrugName] = useState('');
   const [drugCat, setDrugCat] = useState('pharma');
+  const [drugStock, setDrugStock] = useState('50');
   
   const [opd, setOpd] = useState('');
   const [ipd, setIpd] = useState('');
@@ -51,6 +52,7 @@ export default function AddNewItem() {
       setIpd(editItem.IPD || '');
       setOpdtr(editItem.OPDTR || '');
       setIpdtr(editItem.IPDTR || '');
+      setDrugStock(editItem.stock !== undefined ? String(editItem.stock) : '50');
       setSetItems(editItem.items || []);
       setIsSetMode(!!editItem.isSet);
     }
@@ -85,6 +87,7 @@ export default function AddNewItem() {
         IPD: ipd,
         OPDTR: opdtr,
         IPDTR: ipdtr,
+        stock: drugStock ? Number(drugStock) : undefined,
         isSet: isSetMode,
         items: isSetMode ? setItems : undefined
       };
@@ -158,7 +161,7 @@ export default function AddNewItem() {
           </div>
 
           <div className="flex flex-col gap-6">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className={lblCls}>Drug ID / รหัสยา</label>
                 <input className={inputCls} placeholder="e.g. PHA-00123 (ไม่กรอก = auto)" value={drugCode} onChange={e => setDrugCode(e.target.value)} disabled={!!editItem} />
@@ -169,6 +172,10 @@ export default function AddNewItem() {
                   <option value="pharma">💊 Pharma / ยา</option>
                   <option value="nurse">🩺 Nurse / ค่าบริการ-เวชภัณฑ์</option>
                 </select>
+              </div>
+              <div>
+                <label className={lblCls}>Stock / สต็อกตั้งต้น</label>
+                <input type="number" className={inputCls} placeholder="50" value={drugStock} onChange={e => setDrugStock(e.target.value)} />
               </div>
             </div>
 
