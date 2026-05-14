@@ -1,0 +1,26 @@
+{
+  "patients": [
+    {
+      "patient_id": "HN001",
+      "name_th": "สมชาย ใจดี",
+      "name_en": "Somchai Jaidee",
+      "phone": "0812345678",
+      "gender": "Male",
+      "age": 45,
+      "type": "OPD",
+      "nationality": "THAI",
+      "doctor": "Dr. Smith"
+    },
+    {
+      "patient_id": "HN002",
+      "name_th": "John Doe",
+      "name_en": "John Doe",
+      "phone": "0912345678",
+      "gender": "Male",
+      "age": 30,
+      "type": "IPD",
+      "nationality": "INTERNATIONAL",
+      "doctor": "Dr. Jones"
+    }
+  ]
+}
