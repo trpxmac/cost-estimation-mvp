@@ -1,10 +1,14 @@
-﻿import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getEstimations } from '../api';
 import {
   Calculator, Users, TrendingUp, FileText,
-  ArrowRight, Clock, Activity, DollarSign, Pill, ShieldCheck, CheckCircle2
+  ArrowRight, Clock, Activity, DollarSign, Pill, ShieldCheck, CheckCircle2, ChevronRight
 } from 'lucide-react';
+import { 
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+  PieChart, Pie, Cell, BarChart, Bar, Legend
+} from 'recharts';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -34,43 +38,76 @@ export default function Dashboard() {
     { label: 'มูลค่าเฉลี่ยต่อราย', value: formatCurrency(avgValue), unit: 'บาท', icon: <TrendingUp size={22} />, color: 'bg-purple-100 text-purple-600', border: 'border-purple-200' },
   ];
 
-  // Patient type distribution
-  const typeCounts = records.reduce((acc, r) => {
-    acc[r.patientType] = (acc[r.patientType] || 0) + 1;
-    return acc;
-  }, {});
+  // --- Data Transformation for Charts ---
+  
+  // 1. Trend Data (Last 7 Days)
+  const trendData = useMemo(() => {
+    const last7Days = [...Array(7)].map((_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      return d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' });
+    });
+    
+    const dayMap = {};
+    records.forEach(r => {
+      const dateKey = new Date(r.savedAt).toLocaleDateString('th-TH', { day: '2-digit', month: 'short' });
+      dayMap[dateKey] = (dayMap[dateKey] || 0) + (r.totalCourse || 0);
+    });
 
-  // Insurance distribution
-  const insuranceCounts = records.reduce((acc, r) => {
-    const k = r.insuranceType || 'ไม่ระบุ';
-    acc[k] = (acc[k] || 0) + 1;
-    return acc;
-  }, {});
+    return last7Days.map(date => ({ date, total: dayMap[date] || 0 }));
+  }, [records]);
 
-  // Agreement distribution
-  const agreeCounts = records.reduce((acc, r) => {
-    const status = r.patientAgrees === true ? 'ตกลง' : r.patientAgrees === false ? 'ไม่ตกลง' : 'รอยืนยัน';
-    acc[status] = (acc[status] || 0) + 1;
-    return acc;
-  }, {});
+  // 2. Patient Type Donut Data
+  const patientTypeData = useMemo(() => {
+    const counts = records.reduce((acc, r) => {
+      acc[r.patientType] = (acc[r.patientType] || 0) + 1;
+      return acc;
+    }, {});
+    return Object.entries(counts).map(([name, value]) => ({ name, value }));
+  }, [records]);
 
-  // Top medications
+  // 3. Insurance Donut Data
+  const insuranceData = useMemo(() => {
+    const counts = records.reduce((acc, r) => {
+      const k = r.insurance || 'Self pay';
+      acc[k] = (acc[k] || 0) + 1;
+      return acc;
+    }, {});
+    return Object.entries(counts).map(([name, value]) => ({ name, value }));
+  }, [records]);
+
+  // 4. Success Rate Donut Data
+  const agreementData = useMemo(() => {
+    const counts = records.reduce((acc, r) => {
+      const status = r.agreement === "agrees" ? 'ตกลงรักษา' : r.agreement === "declines" ? 'ไม่ตกลง' : 'รอยืนยัน';
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    }, {});
+    return [
+      { name: 'ตกลงรักษา', value: counts['ตกลงรักษา'] || 0, color: '#10B981' },
+      { name: 'ไม่ตกลง', value: counts['ไม่ตกลง'] || 0, color: '#EF4444' },
+      { name: 'รอยืนยัน', value: counts['รอยืนยัน'] || 0, color: '#94A3B8' }
+    ].filter(i => i.value > 0);
+  }, [records]);
+
+  // 5. Top Medications Bar Data
   const topMedications = useMemo(() => {
     const drugMap = {};
     records.forEach(r => {
       (r.selectedItems || []).forEach(item => {
-        if (item.isPreparation) return;
-        if (!drugMap[item.itemCode]) {
-          drugMap[item.itemCode] = { name: item.Common_name, count: 0, totalQty: 0 };
+        if (!drugMap[item.Common_name]) {
+          drugMap[item.Common_name] = { name: item.Common_name, count: 0 };
         }
-        drugMap[item.itemCode].count += 1;
-        drugMap[item.itemCode].totalQty += item.quantity || 1;
+        drugMap[item.Common_name].count += 1;
       });
     });
     return Object.values(drugMap)
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
   }, [records]);
+
+  const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899'];
+  const INS_COLORS = ['#3B82F6', '#6366F1', '#8B5CF6', '#F59E0B'];
 
   const typeColors = { OPD: 'bg-blue-500', IPD: 'bg-green-500', OPDTR: 'bg-amber-500', IPDTR: 'bg-purple-500' };
   const agreeColors = { 'ตกลง': 'bg-green-500', 'ไม่ตกลง': 'bg-red-500', 'รอยืนยัน': 'bg-slate-300' };
@@ -113,186 +150,203 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Main Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+      {/* Top Trend Chart */}
+      <div className="bg-white border border-slate-200 rounded-3xl p-6 mb-6 shadow-sm overflow-hidden">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="font-black text-slate-900 flex items-center gap-2">
+            <TrendingUp size={18} className="text-blue-600" /> แนวโน้มมูลค่าการประเมินราคา (7 วันล่าสุด)
+          </h2>
+        </div>
+        <div className="h-[250px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={trendData}>
+              <defs>
+                <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.1}/>
+                  <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} dy={10} />
+              <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} tickFormatter={(v) => v >= 1000 ? `${v/1000}k` : v} />
+              <Tooltip 
+                contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                formatter={(val) => [formatCurrency(val) + " บาท", "ยอดรวม"]}
+              />
+              <Area 
+                type="monotone" 
+                dataKey="total" 
+                stroke="#3B82F6" 
+                strokeWidth={4} 
+                fillOpacity={1} 
+                fill="url(#colorTotal)" 
+                isAnimationActive={true}
+                animationDuration={2000}
+                animationEasing="ease-out"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
 
-        {/* Recent Estimations */}
-        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-          <div className="flex justify-between items-center p-5 border-b border-slate-100">
-            <h2 className="font-semibold text-slate-900 flex items-center gap-2">
-              <Activity size={18} className="text-blue-600" /> ประเมินราคาล่าสุด
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        
+        {/* Top 5 Meds - Horizontal Bar Chart */}
+        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="font-black text-slate-900 flex items-center gap-2">
+              <Pill size={18} className="text-rose-600" /> ยาที่ใช้บ่อยที่สุด (Top 5)
             </h2>
-            <button onClick={() => navigate('/patients')}
-              className="text-sm text-blue-600 font-medium flex items-center gap-1 hover:underline">
-              ดูทั้งหมด <ArrowRight size={14} />
-            </button>
           </div>
-          {records.length === 0 ? (
-            <div className="text-center py-14 text-slate-400">
-              <FileText size={40} className="opacity-20 mx-auto mb-3" />
-              <p className="text-sm">ยังไม่มีการประเมินราคา<br />กดปุ่มด้านบนเพื่อเริ่มต้นครับ</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {records.slice(0, 6).map(r => {
-                const agreeColor = r.patientAgrees === true ? 'bg-green-100 text-green-700' : r.patientAgrees === false ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500';
-                const agreeLabel = r.patientAgrees === true ? '✓ ตกลงรักษา' : r.patientAgrees === false ? '✗ ไม่ตกลง' : 'รอยืนยัน';
-                return (
-                  <div key={r.id} className="flex justify-between items-center px-5 py-3.5 hover:bg-slate-50 transition-colors cursor-pointer"      
-                    onClick={() => navigate('/patients')}>
-                    <div>
-                      <div className="font-semibold text-slate-900 text-sm flex items-center gap-2">
-                        {r.patientName || 'ไม่ระบุชื่อ'}
-                        <span className={`text-[0.6rem] px-2 py-0.5 rounded-full font-semibold ${agreeColor}`}>{agreeLabel}</span>
-                      </div>
-                      <div className="text-xs text-slate-500 mt-0.5">
-                        HN: {r.hn || '-'} {r.vnan ? `· VN/AN: ${r.vnan}` : ''} &nbsp;·&nbsp; {r.diagnosis || 'ไม่ระบุ diagnosis'}
-                      </div>
-                      <div className="text-xs text-slate-400">{formatDate(r.savedAt)}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-bold text-slate-900">{formatCurrency(r.totalCourse)}</div>
-                      <span className="text-[0.65rem] px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full font-semibold">
-                        {r.patientType} · {r.courseCycles} cycle
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={topMedications} layout="vertical" margin={{ left: 50 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                <XAxis type="number" hide />
+                <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 11}} width={120} />
+                <Tooltip 
+                  cursor={{fill: '#f8fafc'}}
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                />
+                <Bar 
+                  dataKey="count" 
+                  fill="#FB7185" 
+                  radius={[0, 4, 4, 0]} 
+                  maxBarSize={30}
+                  isAnimationActive={true}
+                  animationDuration={1500}
+                  animationEasing="ease-out"
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
-        {/* Right Panel */}
-        <div className="flex flex-col gap-4">
-
-          {/* Agreement Status Chart */}
-          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-            <h2 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
-              <CheckCircle2 size={18} className="text-green-600" /> อัตราการตกลงรักษา
+        {/* Proportions Section */}
+        <div className="space-y-6">
+          {/* Patient Type Donut */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm h-[200px] flex flex-col justify-between">
+            <h2 className="text-[0.7rem] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+              <Users size={14} /> สัดส่วนประเภทคนไข้
             </h2>
-            {totalEstimations === 0 ? (
-              <div className="text-center text-slate-400 text-sm py-3">ยังไม่มีข้อมูล</div>
-            ) : (
-              <div className="space-y-3">
-                {['ตกลง', 'ไม่ตกลง', 'รอยืนยัน'].map(status => {
-                  const count = agreeCounts[status] || 0;
-                  const pct = totalEstimations > 0 ? Math.round((count / totalEstimations) * 100) : 0;
-                  return (
-                    <div key={status}>
-                      <div className="flex justify-between text-xs text-slate-600 mb-1">
-                        <span className="font-semibold">{status}</span>
-                        <span>{count} ราย ({pct}%)</span>
-                      </div>
-                      <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div className={`h-full ${agreeColors[status]} rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />      
-                      </div>
-                    </div>
-                  );
-                })}
+            <div className="flex-1 flex items-center justify-center relative">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie 
+                    data={patientTypeData} 
+                    innerRadius={45} 
+                    outerRadius={60} 
+                    paddingAngle={5} 
+                    dataKey="value"
+                    animationDuration={1200}
+                    animationEasing="ease-out"
+                  >
+                    {patientTypeData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                  </Pie>
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="absolute flex flex-col items-center">
+                <span className="text-xl font-black text-slate-800">{totalEstimations}</span>
+                <span className="text-[0.5rem] font-bold text-slate-400 uppercase">Total</span>
               </div>
-            )}
+            </div>
           </div>
 
-          {/* Patient Type Distribution */}
-          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-            <h2 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
-              <Users size={18} className="text-purple-600" /> สัดส่วนประเภทคนไข้
+          {/* Success Rate Donut */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm h-[200px] flex flex-col justify-between">
+            <h2 className="text-[0.7rem] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+              <CheckCircle2 size={14} /> อัตราการตกลงรักษา
             </h2>
-            {totalEstimations === 0 ? (
-              <div className="text-center text-slate-400 text-sm py-3">ยังไม่มีข้อมูล</div>
-            ) : (
-              <div className="space-y-2.5">
-                {['OPD', 'IPD', 'OPDTR', 'IPDTR'].map(type => {
-                  const count = typeCounts[type] || 0;
-                  const pct = totalEstimations > 0 ? Math.round((count / totalEstimations) * 100) : 0;
-                  return (
-                    <div key={type}>
-                      <div className="flex justify-between text-xs text-slate-600 mb-1">
-                        <span className="font-semibold">{type}</span>
-                        <span>{count} ราย ({pct}%)</span>
-                      </div>
-                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div className={`h-full ${typeColors[type]} rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />      
-                      </div>
-                    </div>
-                  );
-                })}
+            <div className="flex-1 flex items-center justify-center relative">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie 
+                    data={agreementData} 
+                    innerRadius={45} 
+                    outerRadius={60} 
+                    paddingAngle={5} 
+                    dataKey="value"
+                    animationDuration={1500}
+                    animationEasing="ease-out"
+                  >
+                    {agreementData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                  </Pie>
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="absolute flex flex-col items-center">
+                <span className="text-xl font-black text-green-600">
+                  {records.length > 0 ? Math.round((records.filter(r => r.agreement === "agrees").length / records.length) * 100) : 0}%
+                </span>
+                <span className="text-[0.5rem] font-bold text-slate-400 uppercase">Success</span>
               </div>
-            )}
-          </div>
-
-          {/* Insurance Distribution */}
-          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-            <h2 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
-              <ShieldCheck size={18} className="text-green-600" /> สัดส่วนสิทธิการรักษา
-            </h2>
-            {totalEstimations === 0 ? (
-              <div className="text-center text-slate-400 text-sm py-3">ยังไม่มีข้อมูล</div>
-            ) : (
-              <div className="space-y-2">
-                {Object.entries(insuranceCounts)
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([type, count]) => {
-                    const pct = Math.round((count / totalEstimations) * 100);
-                    return (
-                      <div key={type} className="flex items-center gap-2">
-                        <span className="text-xs text-slate-600 w-[100px] truncate font-medium">{type}</span>
-                        <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-green-400 rounded-full" style={{ width: `${pct}%` }} />
-                        </div>
-                        <span className="text-xs text-slate-500 w-[30px] text-right">{count}</span>
-                      </div>
-                    );
-                  })}
-              </div>
-            )}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Top Medications */}
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-        <div className="flex justify-between items-center p-5 border-b border-slate-100">
-          <h2 className="font-semibold text-slate-900 flex items-center gap-2">
-            <Pill size={18} className="text-rose-600" /> ยาที่ใช้บ่อยที่สุด (Top 5)
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* Insurance Proportions */}
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm overflow-hidden">
+          <h2 className="font-black text-slate-900 mb-6 flex items-center gap-2">
+            <ShieldCheck size={18} className="text-blue-600" /> สิทธิการรักษา
           </h2>
-          <button onClick={() => navigate('/drug-prices')}
-            className="text-sm text-blue-600 font-medium flex items-center gap-1 hover:underline">
-            ดูราคายาทั้งหมด <ArrowRight size={14} />
-          </button>
+          <div className="h-[230px] w-full flex items-center justify-center relative">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie 
+                  data={insuranceData} 
+                  innerRadius={50} 
+                  outerRadius={70} 
+                  paddingAngle={5} 
+                  dataKey="value"
+                  animationDuration={1500}
+                  animationEasing="ease-out"
+                >
+                  {insuranceData.map((entry, index) => <Cell key={`cell-${index}`} fill={INS_COLORS[index % INS_COLORS.length]} />)}
+                </Pie>
+                <Tooltip 
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                />
+                <Legend verticalAlign="bottom" iconType="circle" wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="absolute flex flex-col items-center mb-6">
+              <span className="text-lg font-black text-slate-800">{insuranceData.length}</span>
+              <span className="text-[0.45rem] font-bold text-slate-400 uppercase">Rights</span>
+            </div>
+          </div>
         </div>
-        {topMedications.length === 0 ? (
-          <div className="text-center py-10 text-slate-400">
-            <Pill size={36} className="opacity-20 mx-auto mb-2" />
-            <p className="text-sm">ยังไม่มีข้อมูล — เริ่มประเมินราคาเพื่อดูสถิติ</p>
+
+        {/* Recent Estimations List */}
+        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden flex flex-col">
+          <div className="flex justify-between items-center p-6 border-b border-slate-100">
+            <h2 className="font-black text-slate-900 flex items-center gap-2">
+              <Activity size={18} className="text-blue-600" /> รายการล่าสุด
+            </h2>
+            <button onClick={() => navigate('/patients')} className="p-2 hover:bg-slate-50 rounded-full text-slate-400"><ChevronRight size={20}/></button>
           </div>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {topMedications.map((drug, idx) => {
-              const maxCount = topMedications[0]?.count || 1;
-              const pct = Math.round((drug.count / maxCount) * 100);
-              return (
-                <div key={idx} className="flex items-center gap-4 px-5 py-3 hover:bg-slate-50 transition-colors">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0
-                    ${idx === 0 ? 'bg-yellow-400' : idx === 1 ? 'bg-slate-400' : idx === 2 ? 'bg-amber-700' : 'bg-slate-200 text-slate-500'}`}>     
-                    {idx + 1}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-slate-900 text-sm truncate">{drug.name}</div>
-                    <div className="h-1.5 bg-slate-100 rounded-full mt-1.5 overflow-hidden">
-                      <div className="h-full bg-rose-400 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
-                    </div>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <div className="text-sm font-bold text-slate-700">{drug.count} ครั้ง</div>
-                    <div className="text-xs text-slate-400">{drug.totalQty} units</div>
-                  </div>
+          <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
+            {records.slice(0, 4).map(r => (
+              <div key={r.id} className="p-4 flex justify-between items-center hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => navigate('/patients')}>
+                <div>
+                  <div className="font-bold text-slate-800 text-sm">{r.patientName || "ไม่ระบุชื่อ"}</div>
+                  <div className="text-[0.65rem] text-slate-400 font-bold">{r.hn} • {r.status}</div>
                 </div>
-              );
-            })}
+                <div className="text-right">
+                  <div className="font-black text-[#0F294D] text-sm">{formatCurrency(r.totalCourse)}</div>
+                  <div className="text-[0.6rem] text-slate-400 font-bold uppercase">{r.patientType}</div>
+                </div>
+              </div>
+            ))}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

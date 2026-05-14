@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { searchMedications, saveEstimation, updateEstimation, getDoctors, getDiagnoses, getAssessors } from "../api";
+import { searchMedications, saveEstimation, updateEstimation, getEstimationById, getDoctors, getDiagnoses, getAssessors } from "../api";
 import { useToast } from "../components/Toast";
 import { User, Trash2, Search, FileText, Activity, Plus, Minus, Save, Printer, Pencil, Pill, CreditCard, Stethoscope, ClipboardCheck, ChevronRight, Calculator, UserRound, Users } from "lucide-react";
 
@@ -107,21 +107,58 @@ export default function CostEstimator() {
   const removeItem = (id) => setSelectedItems(prev => prev.filter(i => i.id !== id));
 
   const handleSave = async () => {
-    if (grandTotal === 0) { toast.warning("กรุณากรอกยอดเงินหรือเพิ่มรายการ"); return; }
+    if (grandTotal === 0 && selectedItems.length === 0) { toast.warning("กรุณาเพิ่มรายการ"); return; }
     try {
+      let finalItems = [...selectedItems];
+      
+      // --- Concurrency Merge Logic ---
+      if (editingId) {
+        const latest = await getEstimationById(editingId);
+        if (latest) {
+          // Merge items from the OTHER role to prevent overwriting
+          if (currentRole === "pharma") {
+            const latestNurse = latest.selectedItems.filter(i => i.category === "nurse" || i.isPreparation);
+            const myPharma = selectedItems.filter(i => i.category === "pharma" || (!i.isPreparation && i.category !== "nurse"));
+            finalItems = [...myPharma, ...latestNurse];
+          } else {
+            const latestPharma = latest.selectedItems.filter(i => i.category === "pharma" || (!i.isPreparation && i.category !== "nurse"));
+            const myNurse = selectedItems.filter(i => i.category === "nurse" || i.isPreparation);
+            finalItems = [...latestPharma, ...myNurse];
+          }
+        }
+      }
+
+      // --- Smart Status Logic ---
+      const hasPharma = finalItems.some(i => i.category === "pharma" || (!i.isPreparation && i.category !== "nurse"));
+      const hasNurse = finalItems.some(i => i.category === "nurse" || i.isPreparation);
+      const status = (hasPharma && hasNurse) ? "สมบูรณ์" : (hasPharma ? "รอพยาบาล" : "รอเภสัช");
+
+      // Recalculate totals based on merged items
+      const pTotal = finalItems.filter(i => i.category === "pharma" || (!i.isPreparation && i.category !== "nurse")).reduce((s, i) => s + getPrice(i) * i.quantity, 0);
+      const nTotal = finalItems.filter(i => i.category === "nurse" || i.isPreparation).reduce((s, i) => s + getPrice(i) * i.quantity, 0);
+      const gTotal = pTotal + nTotal + (prepFeeQty * prepFeeRate);
+
       const record = {
         id: editingId || Date.now().toString(),
         savedAt: new Date().toISOString(),
         hn, vnan, patientName, doctorName, diagnosis, assessor, bsa,
-        patientType, billingRight, insurance, agreement, prepFeeQty, prepFeeTotal,
-        courseCycles, selectedItems,
-        pharmaTotal, nurseTotal, grandTotal, totalCourse,
-        status: "รอตรวจสอบ"
+        patientType, billingRight, insurance, agreement, prepFeeQty, prepFeeTotal: (prepFeeQty * prepFeeRate),
+        courseCycles, 
+        selectedItems: finalItems,
+        pharmaTotal: pTotal, nurseTotal: nTotal, grandTotal: gTotal, totalCourse: gTotal * courseCycles,
+        status,
+        lastUpdatedBy: currentRole
       };
+
       if (editingId) await updateEstimation(editingId, record);
       else await saveEstimation(record);
-      toast.success("บันทึกข้อมูลแล้ว", { duration: 3000 });
-      if (!editingId) navigate("/patients"); // Go back to see the pending list
+
+      toast.success(status === "สมบูรณ์" ? "บันทึกข้อมูลสมบูรณ์" : `บันทึกแล้ว (${status})`);
+      if (!editingId) navigate("/patients");
+      else {
+        // If editing, refresh local items to show merged result
+        setSelectedItems(finalItems);
+      }
     } catch (e) { toast.error("เกิดข้อผิดพลาด"); }
   };
 
@@ -195,7 +232,8 @@ export default function CostEstimator() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
+                <div><label className={lblCls}>ผู้ประเมิน</label><select className={inputCls} value={assessor} onChange={e => setAssessor(e.target.value)}><option value="">-- เลือก --</option>{assessors.map(a => <option key={a} value={a}>{a}</option>)}</select></div>
                 <div><label className={lblCls}>แพทย์</label><select className={inputCls} value={doctorName} onChange={e => setDoctorName(e.target.value)}><option value="">-- เลือก --</option>{doctors.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
                 <div><label className={lblCls}>Diagnosis</label><select className={inputCls} value={diagnosis} onChange={e => setDiagnosis(e.target.value)}><option value="">-- เลือก --</option>{diagnoses.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
               </div>
@@ -273,7 +311,9 @@ export default function CostEstimator() {
               <div className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400">VN/AN:</span><span className="font-black">{vnan || "-"}</span></div>
               <div className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400">ชื่อผู้ป่วย:</span><span className="font-black">{patientName || "-"}</span></div>
               <div className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400">ประเภทผู้ป่วย:</span><span className="font-black">{patientType || "-"}</span></div>
+              <div className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400">ผู้ประเมิน:</span><span className="font-black">{assessor || "-"}</span></div>
               <div className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400">แพทย์:</span><span className="font-black">{doctorName || "-"}</span></div>
+              <div className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400">Diagnosis:</span><span className="font-black">{diagnosis || "-"}</span></div>
               <div className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400">สิทธิที่ใช้:</span><span className="font-black">{insurance}</span></div>
               <div className="flex justify-between border-b border-slate-50 pb-1">
                 <span className="text-slate-400">การตกลงรักษา:</span>

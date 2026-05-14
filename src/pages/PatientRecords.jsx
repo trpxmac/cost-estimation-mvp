@@ -5,7 +5,7 @@ import mockData from '../mockData.json';
 import { useToast } from '../components/Toast';
 import {
   Search, Calculator, ClipboardList, Trash2,
-  FileText, Phone, User, Pencil
+  FileText, Phone, User, Pencil, Pill, Stethoscope, ClipboardCheck, X
 } from 'lucide-react';
 
 const mockPatients = mockData.patients;
@@ -17,6 +17,7 @@ export default function PatientRecords() {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('patients');
   const [selectedRecord, setSelectedRecord] = useState(null);
+  const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
     getEstimations()
@@ -159,7 +160,17 @@ export default function PatientRecords() {
                   </div>
                   <div className="text-right">
                     <div className="text-sm font-black text-[#0F294D]">{formatCurrency(r.totalCourse)}</div>
-                    <span className="text-[0.6rem] px-2 py-0.5 bg-slate-100 text-slate-500 rounded font-bold uppercase">{r.patientType} • {r.billingRight}</span>
+                    <div className="flex flex-col items-end gap-1 mt-1">
+                      <span className={`text-[0.55rem] px-2 py-0.5 rounded-full font-black uppercase border ${
+                        r.status === "สมบูรณ์" ? "bg-green-100 text-green-700 border-green-200" :
+                        r.status === "รอพยาบาล" ? "bg-blue-100 text-blue-700 border-blue-200" :
+                        r.status === "รอเภสัช" ? "bg-indigo-100 text-indigo-700 border-indigo-200" :
+                        "bg-slate-100 text-slate-500 border-slate-200"
+                      }`}>
+                        {r.status || "รอตรวจสอบ"}
+                      </span>
+                      <span className="text-[0.55rem] text-slate-400 font-bold uppercase">{r.patientType} • {r.billingRight}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -176,6 +187,14 @@ export default function PatientRecords() {
                     <div className="flex gap-2 mt-3">
                       <span className="text-[0.65rem] px-2.5 py-1 bg-blue-100 text-blue-800 rounded font-black uppercase">{selectedRecord.patientType}</span>
                       <span className="text-[0.65rem] px-2.5 py-1 bg-purple-100 text-purple-800 rounded font-black uppercase">{selectedRecord.billingRight}</span>
+                      <span className={`text-[0.65rem] px-2.5 py-1 rounded font-black uppercase border ${
+                        selectedRecord.status === "สมบูรณ์" ? "bg-green-100 text-green-700 border-green-200" :
+                        selectedRecord.status === "รอพยาบาล" ? "bg-blue-100 text-blue-700 border-blue-200" :
+                        selectedRecord.status === "รอเภสัช" ? "bg-indigo-100 text-indigo-700 border-indigo-200" :
+                        "bg-slate-100 text-slate-500 border-slate-200"
+                      }`}>
+                        {selectedRecord.status || "รอตรวจสอบ"}
+                      </span>
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -184,16 +203,55 @@ export default function PatientRecords() {
                   </div>
                 </div>
                 
-                <div className="space-y-3 mb-6">
-                   {selectedRecord.selectedItems?.map(item => (
-                     <div key={item.id} className="flex justify-between text-sm">
-                        <div className="flex-1">
-                          <div className="font-bold">{item.Common_name}</div>
-                          <div className="text-xs text-slate-400">{item.quantity} units {item.dose ? `(${item.dose})` : ''}</div>
+                {/* Grouped Summary Section */}
+                <div className="space-y-4 mb-8">
+                  <div className="p-4 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-blue-600 shadow-sm"><Pill size={20} /></div>
+                      <div>
+                        <div className="text-[0.6rem] font-black text-blue-400 uppercase tracking-tighter">ส่วนงานเภสัชกรรม</div>
+                        <div className="text-xs font-bold text-slate-700">{selectedRecord.selectedItems?.filter(i => i.category === "pharma" || (!i.isPreparation && i.category !== "nurse")).length || 0} รายการ</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-black text-blue-700">{formatCurrency(selectedRecord.pharmaTotal)}</div>
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-indigo-600 shadow-sm"><Stethoscope size={20} /></div>
+                      <div>
+                        <div className="text-[0.6rem] font-black text-indigo-400 uppercase tracking-tighter">ส่วนงานพยาบาลและบริการ</div>
+                        <div className="text-xs font-bold text-slate-700">{selectedRecord.selectedItems?.filter(i => i.category === "nurse" || i.isPreparation).length || 0} รายการ</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-black text-indigo-700">{formatCurrency(selectedRecord.nurseTotal)}</div>
+                    </div>
+                  </div>
+
+                  {selectedRecord.prepFeeTotal > 0 && (
+                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between opacity-80">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-slate-500 shadow-sm"><ClipboardCheck size={20} /></div>
+                        <div>
+                          <div className="text-[0.6rem] font-black text-slate-400 uppercase tracking-tighter">ค่าเวชภัณฑ์และค่าเตรียมยา</div>
+                          <div className="text-xs font-bold text-slate-700">{selectedRecord.prepFeeQty} ครั้ง</div>
                         </div>
-                        <div className="font-mono">{formatCurrency((item[selectedRecord.billingRight] || item["OPD"]) * item.quantity)}</div>
-                     </div>
-                   ))}
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-black text-slate-700">{formatCurrency(selectedRecord.prepFeeTotal)}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  <button 
+                    onClick={() => setShowModal(true)}
+                    className="w-full py-2.5 rounded-xl border-2 border-dashed border-slate-200 text-slate-400 text-xs font-black hover:bg-slate-50 hover:border-slate-300 transition-all flex items-center justify-center gap-2"
+                  >
+                    <Search size={14} /> ดูรายละเอียดรายการทั้งหมด
+                  </button>
                 </div>
 
                 <div className="bg-[#FFD700] p-4 rounded-xl flex justify-between items-center font-black">
@@ -207,6 +265,71 @@ export default function PatientRecords() {
                 <p className="font-bold">เลือกรายการเพื่อดูรายละเอียด</p>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal for Detailed Item List */}
+      {showModal && selectedRecord && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col">
+            <div className="p-6 border-b flex justify-between items-center bg-slate-50/50">
+              <div>
+                <h3 className="font-black text-xl text-[#0F294D]">รายละเอียดรายการ</h3>
+                <p className="text-xs text-slate-400 font-bold uppercase mt-1">HN: {selectedRecord.hn} • {selectedRecord.patientName}</p>
+              </div>
+              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400"><X size={24}/></button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6 space-y-8">
+              {/* Pharma Section */}
+              <section>
+                <h4 className="text-[0.65rem] font-black text-blue-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+                  <Pill size={14} /> รายการยาและเวชภัณฑ์
+                </h4>
+                <div className="divide-y border rounded-2xl overflow-hidden">
+                  {selectedRecord.selectedItems?.filter(i => i.category === "pharma" || (!i.isPreparation && i.category !== "nurse")).map(item => (
+                    <div key={item.id} className="p-3 flex justify-between items-center bg-white">
+                      <div>
+                        <div className="font-bold text-slate-800 text-sm">{item.Common_name}</div>
+                        <div className="text-[0.65rem] text-slate-400 font-bold">{item.quantity} units {item.dose ? `• ${item.dose}` : ''}</div>
+                      </div>
+                      <div className="text-right font-mono text-sm font-black text-slate-700">
+                        {formatCurrency((item[selectedRecord.billingRight] || item["OPD"]) * item.quantity)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {/* Nurse Section */}
+              <section>
+                <h4 className="text-[0.65rem] font-black text-indigo-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+                  <Stethoscope size={14} /> รายการพยาบาลและค่าบริการ
+                </h4>
+                <div className="divide-y border rounded-2xl overflow-hidden">
+                  {selectedRecord.selectedItems?.filter(i => i.category === "nurse" || i.isPreparation).map(item => (
+                    <div key={item.id} className="p-3 flex justify-between items-center bg-white">
+                      <div>
+                        <div className="font-bold text-slate-800 text-sm">{item.Common_name}</div>
+                        <div className="text-[0.65rem] text-slate-400 font-bold">{item.quantity} units</div>
+                      </div>
+                      <div className="text-right font-mono text-sm font-black text-slate-700">
+                        {formatCurrency((item[selectedRecord.billingRight] || item["OPD"]) * item.quantity)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
+
+            <div className="p-6 bg-slate-50 border-t flex justify-between items-center">
+              <div>
+                <div className="text-[0.65rem] font-black text-slate-400 uppercase">Grand Total</div>
+                <div className="text-2xl font-black text-[#0F294D]">{formatCurrency(selectedRecord.totalCourse)}</div>
+              </div>
+              <button onClick={() => setShowModal(false)} className="bg-[#0F294D] text-white px-8 py-3 rounded-xl font-black text-sm hover:bg-slate-800 transition-all shadow-lg">ปิดหน้าต่าง</button>
+            </div>
           </div>
         </div>
       )}

@@ -37,6 +37,11 @@ export async function getEstimations() {
   return JSON.parse(localStorage.getItem('estimations') || '[]');
 }
 
+export async function getEstimationById(id) {
+  const existing = JSON.parse(localStorage.getItem('estimations') || '[]');
+  return existing.find(r => r.id === id) || null;
+}
+
 export async function deleteEstimation(id) {
   const existing = JSON.parse(localStorage.getItem('estimations') || '[]');
   const updated = existing.filter(r => r.id !== id);
