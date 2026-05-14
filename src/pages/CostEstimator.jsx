@@ -166,10 +166,11 @@ export default function CostEstimator() {
                 <div className="col-span-1"><label className={lblCls}>ชื่อผู้ป่วย</label><input className={inputCls} value={patientName} onChange={e => setPatientName(e.target.value)} /></div>
                 <div>
                   <label className={lblCls}>ประเภทผู้ป่วย</label>
-                  <select className={inputCls} value={patientType} onChange={e => setPatientType(e.target.value)}>
-                    <option value="OPD">OPD</option>
-                    <option value="IPD">IPD</option>
-                  </select>
+                  <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-lg">
+                    {["OPD", "IPD"].map(t => (
+                      <button key={t} onClick={() => setPatientType(t)} className={`py-1 rounded text-[0.6rem] font-black transition-all ${patientType === t ? "bg-white text-blue-700 shadow-sm" : "text-slate-400"}`}>{t}</button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
