@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { ChevronRight, Info, Save, Activity, PlusCircle, Pill, Stethoscope } from 'lucide-react';
 import { addNewDrug, addNewDiagnosis } from '../api';
 import { useToast } from '../components/Toast';
@@ -11,6 +11,8 @@ const lblCls = 'block text-xs font-semibold text-slate-500 mb-1.5 uppercase trac
 export default function AddNewItem() {
   const navigate = useNavigate();
   const toast = useToast();
+  const location = useLocation();
+  const editItem = location.state?.editItem;
   const [tab, setTab] = useState('drug');
 
   const [drugCode, setDrugCode] = useState('');
@@ -34,6 +36,24 @@ export default function AddNewItem() {
   const [diseaseName, setDiseaseName] = useState('');
   const [savingDis, setSavingDis] = useState(false);
 
+  useEffect(() => {
+    if (editItem) {
+      setDrugCode(editItem.itemCode || '');
+      setDrugName(editItem.Common_name || '');
+      setDrugCat(editItem.category || 'pharma');
+      setOpd(editItem.OPD || '');
+      setIpd(editItem.IPD || '');
+      setOpdtr(editItem.OPDTR || '');
+      setIpdtr(editItem.IPDTR || '');
+      setT2opd(editItem.TYPE2_OPD || '');
+      setT2ipd(editItem.TYPE2_IPD || '');
+      setT4opd(editItem.TYPE4_OPD || '');
+      setT4ipd(editItem.TYPE4_IPD || '');
+      setT4opdtr(editItem.TYPE4_OPDTR || '');
+      setT4ipdtr(editItem.TYPE4_IPDTR || '');
+    }
+  }, [editItem]);
+
   const handleSaveDrug = async () => {
     if (!drugName.trim()) {
       toast.warning('กรุณากรอกชื่อยา', 'ชื่อยาเป็นข้อมูลที่จำเป็น');
@@ -56,11 +76,14 @@ export default function AddNewItem() {
         TYPE4_OPDTR: t4opdtr,
         TYPE4_IPDTR: t4ipdtr
       });
-      toast.success('บันทึกสำเร็จ!', `เพิ่ม "${drugName}" เข้าสู่ระบบแล้ว`);
-      setDrugCode(''); setDrugName('');
-      setOpd(''); setIpd(''); setOpdtr(''); setIpdtr('');
-      setT2opd(''); setT2ipd('');
-      setT4opd(''); setT4ipd(''); setT4opdtr(''); setT4ipdtr('');
+      toast.success(editItem ? 'อัปเดตข้อมูลสำเร็จ!' : 'บันทึกสำเร็จ!', `เรียบร้อยแล้ว`);
+      if (editItem) navigate('/drug-prices');
+      else {
+        setDrugCode(''); setDrugName('');
+        setOpd(''); setIpd(''); setOpdtr(''); setIpdtr('');
+        setT2opd(''); setT2ipd('');
+        setT4opd(''); setT4ipd(''); setT4opdtr(''); setT4ipdtr('');
+      }
     } catch (e) {
       toast.error('บันทึกไม่สำเร็จ', 'เกิดข้อผิดพลาด');
     }
@@ -96,27 +119,29 @@ export default function AddNewItem() {
   return (
     <div className="max-w-[1000px] mx-auto pb-10">
       <div className="flex items-center gap-2 text-slate-500 text-[0.85rem] mb-5">
-        <span>Inventory</span><ChevronRight size={14} /><span className="font-semibold text-slate-900">เพิ่มข้อมูลใหม่</span>
+        <span>Inventory</span><ChevronRight size={14} /><span className="font-semibold text-slate-900">{editItem ? 'แก้ไขข้อมูล' : 'เพิ่มข้อมูลใหม่'}</span>
       </div>
       
-      <div className="flex gap-3 mb-6">
-        <button onClick={() => setTab('drug')} className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold text-sm transition-colors ${tab === 'drug' ? 'bg-[#0F294D] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-          <Pill size={15} /> เพิ่มยา/เวชภัณฑ์ใหม่
-        </button>
-        <button onClick={() => setTab('disease')} className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold text-sm transition-colors ${tab === 'disease' ? 'bg-[#0F294D] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-          <Stethoscope size={15} /> เพิ่มโรค / Diagnosis
-        </button>
-      </div>
+      {!editItem && (
+        <div className="flex gap-3 mb-6">
+          <button onClick={() => setTab('drug')} className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold text-sm transition-colors ${tab === 'drug' ? 'bg-[#0F294D] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+            <Pill size={15} /> เพิ่มยา/เวชภัณฑ์ใหม่
+          </button>
+          <button onClick={() => setTab('disease')} className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold text-sm transition-colors ${tab === 'disease' ? 'bg-[#0F294D] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+            <Stethoscope size={15} /> เพิ่มโรค / Diagnosis
+          </button>
+        </div>
+      )}
 
       {tab === 'drug' && (
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-8 mb-6">
           <div className="flex justify-between items-start mb-7">
             <div>
-              <h1 className="text-xl font-bold mb-1 text-slate-900">เพิ่มยาตัวใหม่ / Add New Drug</h1>
-              <p className="text-slate-500 text-sm">กรอกข้อมูลรายละเอียดของยาและราคาแต่ละประเภทเพื่อบันทึกเข้าระบบ</p>
+              <h1 className="text-xl font-bold mb-1 text-slate-900">{editItem ? 'แก้ไขข้อมูลยา / Edit Drug' : 'เพิ่มยาตัวใหม่ / Add New Drug'}</h1>
+              <p className="text-slate-500 text-sm">{editItem ? 'แก้ไขรายละเอียดราคาและข้อมูลของรายการเดิม' : 'กรอกข้อมูลรายละเอียดของยาและราคาแต่ละประเภทเพื่อบันทึกเข้าระบบ'}</p>
             </div>
             <div className="bg-slate-100 text-slate-500 px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2">
-              <Activity size={15} /> Code: AUTO-GEN
+              <Activity size={15} /> {editItem ? `ID: ${drugCode}` : 'Code: AUTO-GEN'}
             </div>
           </div>
 
@@ -124,7 +149,7 @@ export default function AddNewItem() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className={lblCls}>Drug ID / รหัสยา</label>
-                <input className={inputCls} placeholder="e.g. PHA-00123 (ไม่กรอก = auto)" value={drugCode} onChange={e => setDrugCode(e.target.value)} />
+                <input className={inputCls} placeholder="e.g. PHA-00123 (ไม่กรอก = auto)" value={drugCode} onChange={e => setDrugCode(e.target.value)} disabled={!!editItem} />
               </div>
               <div>
                 <label className={lblCls}>Category / ประเภท</label>
@@ -142,42 +167,20 @@ export default function AddNewItem() {
 
             <div className="border-t border-slate-100 pt-6">
               <h3 className="text-sm font-bold mb-4 text-[#0F294D] flex items-center gap-2">
-                <div className="w-1 h-4 bg-blue-600 rounded-full"></div> ประเภท 1 & ต่างชาติ (Standard)
+                <div className="w-1 h-4 bg-blue-600 rounded-full"></div> รายละเอียดราคาตามประเภทสิทธิ (Pricing Right)
               </h3>
-              <div className="grid grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <PriceInput label="OPD" value={opd} onChange={setOpd} />
                 <PriceInput label="IPD" value={ipd} onChange={setIpd} />
-                <PriceInput label="OPDTR (ต่างชาติ)" value={opdtr} onChange={setOpdtr} />
-                <PriceInput label="IPDTR (ต่างชาติ)" value={ipdtr} onChange={setIpdtr} />
-              </div>
-            </div>
-
-            <div className="border-t border-slate-100 pt-6">
-              <h3 className="text-sm font-bold mb-4 text-[#0F294D] flex items-center gap-2">
-                <div className="w-1 h-4 bg-purple-600 rounded-full"></div> ประเภท 2
-              </h3>
-              <div className="grid grid-cols-2 gap-4">
-                <PriceInput label="Type 2 - OPD" value={t2opd} onChange={setT2opd} />
-                <PriceInput label="Type 2 - IPD" value={t2ipd} onChange={setT2ipd} />
-              </div>
-            </div>
-
-            <div className="border-t border-slate-100 pt-6">
-              <h3 className="text-sm font-bold mb-4 text-[#0F294D] flex items-center gap-2">
-                <div className="w-1 h-4 bg-amber-600 rounded-full"></div> ประเภท 4
-              </h3>
-              <div className="grid grid-cols-4 gap-4">
-                <PriceInput label="Type 4 - OPD" value={t4opd} onChange={setT4opd} />
-                <PriceInput label="Type 4 - IPD" value={t4ipd} onChange={setT4ipd} />
-                <PriceInput label="Type 4 - OPDTR" value={t4opdtr} onChange={setT4opdtr} />
-                <PriceInput label="Type 4 - IPDTR" value={t4ipdtr} onChange={setIpdtr} />
+                <PriceInput label="OPDTR" value={opdtr} onChange={setOpdtr} />
+                <PriceInput label="IPDTR" value={ipdtr} onChange={setIpdtr} />
               </div>
             </div>
 
             <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 flex gap-3">
               <Info size={18} className="text-blue-600 flex-shrink-0 mt-0.5" />
               <p className="text-[0.85rem] text-blue-800 leading-relaxed">
-                หากไม่ได้กรอกราคาในประเภท 2 หรือ 4 ระบบจะใช้ราคาจาก <b>ประเภท 1 (OPD/IPD)</b> เป็นค่าเริ่มต้นให้โดยอัตโนมัติ
+                ระบุราคาตามประเภทผู้ป่วย หากราคาเท่ากันในบางหมวด สามารถกรอกตัวเลขเดียวกันได้ครับ
               </p>
             </div>
           </div>
@@ -185,7 +188,7 @@ export default function AddNewItem() {
           <div className="flex justify-end gap-3 mt-10 pt-6 border-t border-slate-100">
             <button className="px-6 py-2.5 rounded-lg font-semibold text-slate-600 hover:bg-slate-50 transition-colors" onClick={() => navigate('/drug-prices')}>ยกเลิก</button>
             <button onClick={handleSaveDrug} disabled={saving} className="bg-[#0F294D] text-white px-10 py-2.5 rounded-lg font-bold flex items-center gap-2 hover:bg-slate-800 transition-all disabled:opacity-50">
-              <Save size={18} /> {saving ? 'กำลังบันทึก...' : 'บันทึกข้อมูลยา'}
+              <Save size={18} /> {saving ? 'กำลังบันทึก...' : (editItem ? 'อัปเดตข้อมูล' : 'บันทึกข้อมูลยา')}
             </button>
           </div>
         </div>

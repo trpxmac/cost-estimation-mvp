@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { searchMedications, saveEstimation, updateEstimation, getEstimationById, getDoctors, getDiagnoses, getAssessors } from "../api";
 import { useToast } from "../components/Toast";
-import { User, Trash2, Search, FileText, Activity, Plus, Minus, Save, Printer, Pencil, Pill, CreditCard, Stethoscope, ClipboardCheck, ChevronRight, Calculator, UserRound, Users } from "lucide-react";
+import { User, Trash2, Search, FileText, Activity, Plus, Minus, Save, Printer, Pencil, Pill, CreditCard, Stethoscope, ClipboardCheck, ChevronRight, Calculator, UserRound, Users, X } from "lucide-react";
 
 export default function CostEstimator() {
   const navigate = useNavigate();
@@ -26,8 +26,6 @@ export default function CostEstimator() {
   // --- New Features State ---
   const [insurance, setInsurance] = useState("Self pay");
   const [agreement, setAgreement] = useState("agrees"); // "agrees" | "declines"
-  const [prepFeeQty, setPrepFeeQty] = useState(1);
-  const prepFeeRate = 3000; // ราคาค่าตู้ต่อครั้ง
 
   // --- Role & Totals ---
   const [currentRole, setCurrentRole] = useState("pharma"); // "pharma" | "nurse"
@@ -62,7 +60,6 @@ export default function CostEstimator() {
       setCourseCycles(r.courseCycles || 1);
       setInsurance(r.insurance || "Self pay");
       setAgreement(r.agreement || "agrees");
-      setPrepFeeQty(r.prepFeeQty ?? 1);
       setSelectedItems(r.selectedItems || []);
       setEditingId(r.id);
     } else {
@@ -70,46 +67,174 @@ export default function CostEstimator() {
       if (s.patientName) setPatientName(s.patientName);
       if (s.patientType) setPatientType(s.patientType);
       if (s.billingRight) setBillingRight(s.billingRight);
-      else if (s.patientType) setBillingRight(s.patientType);
+      else if (s.patientType) setBillingRight(s.billingRight);
       if (s.preSelectedItem) handleAddItem(s.preSelectedItem);
     }
   }, [location.state]);
 
   useEffect(() => {
     searchMedications(searchQuery).then(results => {
-      // Filter results based on role
-      if (currentRole === "pharma") setSearchResults(results.filter(i => i.category === "pharma"));
-      else setSearchResults(results.filter(i => i.category === "nurse" || i.isPreparation));
+      // Filter results based on role, but ALWAYS include Item Sets
+      setSearchResults(results.filter(i => {
+        if (i.isSet) return true;
+        if (currentRole === "pharma") return i.category === "pharma";
+        return i.category === "nurse" || i.isPreparation;
+      }));
     });
   }, [searchQuery, currentRole]);
 
-  const getPrice = (item) => item[billingRight] || item["OPD"] || 0;
+  const getPrice = (item) => {
+    if (item.isSet && item.items) {
+      return item.items.reduce((s, i) => s + (i[billingRight] || i["OPD"] || 0), 0);
+    }
+    return item[billingRight] || item["OPD"] || 0;
+  };
 
-  const pharmaItems = selectedItems.filter(i => i.category === "pharma" || (!i.isPreparation && i.category !== "nurse"));
-  const nurseItems = selectedItems.filter(i => i.category === "nurse" || i.isPreparation);
+  // Filter items into Drugs and Prep for the summary
+  const drugItems = selectedItems.filter(i => !i.isPreparation);
+  const prepItems = selectedItems.filter(i => i.isPreparation);
 
+  const drugTotal = drugItems.reduce((s, i) => s + getPrice(i) * i.quantity, 0);
+  const prepTotal = prepItems.reduce((s, i) => s + getPrice(i) * i.quantity, 0);
+  const grandTotal = drugTotal + prepTotal;
+  const totalCourse = grandTotal * courseCycles;
+
+  const pharmaItems = selectedItems.filter(i => i.category === "pharma");
+  const nurseItems = selectedItems.filter(i => i.category === "nurse");
   const pharmaTotal = pharmaItems.reduce((s, i) => s + getPrice(i) * i.quantity, 0);
   const nurseTotal = nurseItems.reduce((s, i) => s + getPrice(i) * i.quantity, 0);
-  const prepFeeTotal = prepFeeQty * prepFeeRate; // คำนวณค่าตู้รวม
-
-  const grandTotal = pharmaTotal + nurseTotal + prepFeeTotal; // รวมค่าตู้เข้าใน Grand Total
-  const totalCourse = grandTotal * courseCycles;
 
   const fmt = (v) => new Intl.NumberFormat("th-TH", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(v);
 
   const handleAddItem = (item) => {
-    setSelectedItems(prev => [...prev, { ...item, id: Date.now().toString() + Math.random(), quantity: 1, dose: "" }]);
+    if (item.isSet && item.items) {
+      const instanceId = Date.now().toString() + Math.random();
+      const exploded = item.items.map(subItem => ({
+        ...subItem,
+        id: Date.now().toString() + Math.random(),
+        quantity: subItem.quantity || 1,
+        dose: "",
+        setInstanceId: instanceId,
+        parentSetName: item.Common_name
+      }));
+      setSelectedItems(prev => [...prev, ...exploded]);
+      toast.success(`เพิ่มชุดรายการ ${item.itemCode} แล้ว (${item.items.length} รายการ)`);
+    } else {
+      setSelectedItems(prev => [...prev, { ...item, id: Date.now().toString() + Math.random(), quantity: 1, dose: "" }]);
+    }
     setSearchQuery("");
   };
 
   const updateQuantity = (id, d) => setSelectedItems(prev => prev.map(i => i.id === id ? { ...i, quantity: Math.max(1, i.quantity + d) } : i));
+  const updateGroupQuantity = (gid, d) => {
+    setSelectedItems(prev => prev.map(i => i.setInstanceId === gid ? { ...i, quantity: Math.max(1, i.quantity + d) } : i));
+  };
   const updateDose = (id, dose) => setSelectedItems(prev => prev.map(i => i.id === id ? { ...i, dose } : i));
   const removeItem = (id) => setSelectedItems(prev => prev.filter(i => i.id !== id));
+  const removeGroup = (gid) => setSelectedItems(prev => prev.filter(i => i.setInstanceId !== gid));
 
-  const handleSave = async () => {
-    if (grandTotal === 0 && selectedItems.length === 0) { toast.warning("กรุณาเพิ่มรายการ"); return; }
+  const renderTable = (items, t) => {
+    const groups = [];
+    let currentGid = null;
+    items.forEach(item => {
+      if (item.setInstanceId) {
+        if (item.setInstanceId !== currentGid) {
+          groups.push({ isGroupHeader: true, gid: item.setInstanceId, name: item.parentSetName, qty: item.quantity });
+          currentGid = item.setInstanceId;
+        }
+      } else {
+        currentGid = null;
+      }
+      groups.push(item);
+    });
+
+    return (
+      <table className="w-full text-[0.7rem] border-collapse mb-2">
+        <thead>
+          <tr className="border-b border-slate-100">
+            <th className="py-2 text-left text-[0.6rem] font-bold text-slate-400 uppercase">รายการ</th>
+            <th className="py-2 text-center text-[0.6rem] font-bold text-slate-400 uppercase w-[60px]">Dose</th>
+            <th className="py-2 text-center text-[0.6rem] font-bold text-slate-400 uppercase w-[80px]">QTY</th>
+            <th className="py-2 text-right text-[0.6rem] font-bold text-slate-400 uppercase w-[100px]">รวม</th>
+            <th className="py-2 text-center text-[0.6rem] font-bold text-slate-400 uppercase w-[40px] no-print"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {groups.map((i, idx) => {
+            if (i.isGroupHeader) {
+              return (
+                <tr key={i.gid} className="bg-slate-50/50 group/set">
+                  <td colSpan="2" className="py-2 px-2">
+                    <div className="flex items-center">
+                      <span className="bg-indigo-600 text-white text-[0.55rem] font-black px-1.5 py-0.5 rounded mr-2 uppercase shadow-sm">Set</span>
+                      <span className="font-bold text-indigo-900">{i.name}</span>
+                    </div>
+                  </td>
+                  <td className="py-2 text-center">
+                    <div className="flex items-center justify-center gap-1 no-print">
+                      <button onClick={() => updateGroupQuantity(i.gid, -1)} className="bg-white border border-slate-200 rounded p-0.5 text-indigo-400 hover:bg-indigo-50"><Minus size={10} /></button>
+                      <span className="w-6 text-center font-black text-indigo-700">{i.qty}</span>
+                      <button onClick={() => updateGroupQuantity(i.gid, 1)} className="bg-white border border-slate-200 rounded p-0.5 text-indigo-400 hover:bg-indigo-50"><Plus size={10} /></button>
+                    </div>
+                    <span className="hidden print:block text-center font-bold text-indigo-900">{i.qty} ชุด</span>
+                  </td>
+                  <td className="py-2 text-right font-black text-indigo-900 px-2"></td>
+                  <td className="py-2 text-center no-print">
+                    <button onClick={() => removeGroup(i.gid)} className="text-slate-300 hover:text-red-500 transition-colors">
+                      <Trash2 size={14} />
+                    </button>
+                  </td>
+                </tr>
+              );
+            }
+            return (
+              <tr key={i.id} className={`border-b border-slate-50 hover:bg-slate-50/30 transition-colors ${i.setInstanceId ? 'bg-indigo-50/10' : ''}`}>
+                <td className={`py-2 ${i.setInstanceId ? 'pl-8' : 'px-2'}`}>
+                  <div className="font-bold text-slate-800 text-[0.7rem]">{i.Common_name}</div>
+                  <div className="text-[0.55rem] text-slate-400 font-mono no-print">{i.itemCode}</div>
+                </td>
+                <td className="py-2 text-center">
+                  <input 
+                    type="text" 
+                    value={i.dose || ""} 
+                    onChange={(e) => updateDose(i.id, e.target.value)}
+                    placeholder="-"
+                    className="w-full text-center bg-transparent border-b border-transparent focus:border-blue-300 focus:outline-none text-[0.7rem] font-bold text-blue-600 no-print"
+                  />
+                  <span className="hidden print:inline font-bold">{i.dose || "-"}</span>
+                </td>
+                <td className="py-2">
+                  <div className="flex items-center justify-center gap-1 no-print">
+                    {!i.setInstanceId && <button onClick={() => updateQuantity(i.id, -1)} className="text-slate-300 hover:text-slate-500"><Minus size={12} /></button>}
+                    <span className="w-4 text-center font-bold text-slate-700">{i.quantity}</span>
+                    {!i.setInstanceId && <button onClick={() => updateQuantity(i.id, 1)} className="text-slate-300 hover:text-slate-500"><Plus size={12} /></button>}
+                  </div>
+                  <span className="hidden print:block text-center font-bold">{i.quantity}</span>
+                </td>
+                <td className="py-2 text-right pr-2">
+                  <div className="font-black text-slate-900">{fmt(getPrice(i) * i.quantity)}</div>
+                  <div className="text-[0.55rem] text-slate-400 no-print">@{fmt(getPrice(i))}</div>
+                </td>
+                <td className="py-2 text-center no-print">
+                  {!i.setInstanceId && (
+                    <button onClick={() => removeItem(i.id)} className="text-slate-200 hover:text-red-400 transition-colors">
+                      <X size={14} />
+                    </button>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    );
+  };
+
+  const handleSave = async (isSilent = false) => {
+    if (grandTotal === 0 && selectedItems.length === 0) { toast.warning("กรุณาเพิ่มรายการ"); return null; }
     try {
       let finalItems = [...selectedItems];
+      const recordId = editingId || Date.now().toString();
       
       // --- Concurrency Merge Logic ---
       if (editingId) {
@@ -134,15 +259,17 @@ export default function CostEstimator() {
       const status = (hasPharma && hasNurse) ? "สมบูรณ์" : (hasPharma ? "รอพยาบาล" : "รอเภสัช");
 
       // Recalculate totals based on merged items
-      const pTotal = finalItems.filter(i => i.category === "pharma" || (!i.isPreparation && i.category !== "nurse")).reduce((s, i) => s + getPrice(i) * i.quantity, 0);
-      const nTotal = finalItems.filter(i => i.category === "nurse" || i.isPreparation).reduce((s, i) => s + getPrice(i) * i.quantity, 0);
-      const gTotal = pTotal + nTotal + (prepFeeQty * prepFeeRate);
+      const pTotal = finalItems.filter(i => i.category === "pharma").reduce((s, i) => s + getPrice(i) * i.quantity, 0);
+      const nTotal = finalItems.filter(i => i.category === "nurse").reduce((s, i) => s + getPrice(i) * i.quantity, 0);
+      const prpTotal = finalItems.filter(i => i.isPreparation).reduce((s, i) => s + getPrice(i) * i.quantity, 0);
+      const gTotal = pTotal + nTotal;
 
       const record = {
-        id: editingId || Date.now().toString(),
+        id: recordId,
         savedAt: new Date().toISOString(),
         hn, vnan, patientName, doctorName, diagnosis, assessor, bsa,
-        patientType, billingRight, insurance, agreement, prepFeeQty, prepFeeTotal: (prepFeeQty * prepFeeRate),
+        patientType, billingRight, insurance, agreement, 
+        prepFeeTotal: prpTotal, 
         courseCycles, 
         selectedItems: finalItems,
         pharmaTotal: pTotal, nurseTotal: nTotal, grandTotal: gTotal, totalCourse: gTotal * courseCycles,
@@ -154,12 +281,26 @@ export default function CostEstimator() {
       else await saveEstimation(record);
 
       toast.success(status === "สมบูรณ์" ? "บันทึกข้อมูลสมบูรณ์" : `บันทึกแล้ว (${status})`);
-      if (!editingId) navigate("/patients");
-      else {
-        // If editing, refresh local items to show merged result
+      
+      if (!isSilent) {
+        if (!editingId) navigate("/patients");
+        else setSelectedItems(finalItems);
+      } else {
+        if (!editingId) setEditingId(recordId); // Set ID so subsequent prints update the same record
         setSelectedItems(finalItems);
       }
-    } catch (e) { toast.error("เกิดข้อผิดพลาด"); }
+      return recordId;
+    } catch (e) { 
+      toast.error("เกิดข้อผิดพลาด"); 
+      return null;
+    }
+  };
+
+  const handleSaveAndPrint = async () => {
+    const savedId = await handleSave(true);
+    if (savedId) {
+      setTimeout(() => window.print(), 800);
+    }
   };
 
   const lblCls = "block text-[0.65rem] font-black text-slate-400 mb-1 uppercase tracking-wider";
@@ -235,7 +376,29 @@ export default function CostEstimator() {
               <div className="grid grid-cols-3 gap-3">
                 <div><label className={lblCls}>ผู้ประเมิน</label><select className={inputCls} value={assessor} onChange={e => setAssessor(e.target.value)}><option value="">-- เลือก --</option>{assessors.map(a => <option key={a} value={a}>{a}</option>)}</select></div>
                 <div><label className={lblCls}>แพทย์</label><select className={inputCls} value={doctorName} onChange={e => setDoctorName(e.target.value)}><option value="">-- เลือก --</option>{doctors.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
-                <div><label className={lblCls}>Diagnosis</label><select className={inputCls} value={diagnosis} onChange={e => setDiagnosis(e.target.value)}><option value="">-- เลือก --</option>{diagnoses.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className={lblCls}>Diagnosis</label>
+                    <button 
+                      onClick={async () => {
+                        const name = window.prompt("ระบุชื่อโรค/Diagnosis ใหม่:");
+                        if (name) {
+                          await addNewDiagnosis(name);
+                          getDiagnoses().then(setDiagnoses);
+                          setDiagnosis(name);
+                          toast.success("เพิ่มโรคใหม่เรียบร้อย");
+                        }
+                      }}
+                      className="text-[0.6rem] font-bold text-blue-600 hover:underline flex items-center gap-0.5"
+                    >
+                      <Plus size={10} /> เพิ่มใหม่
+                    </button>
+                  </div>
+                  <select className={inputCls} value={diagnosis} onChange={e => setDiagnosis(e.target.value)}>
+                    <option value="">-- เลือก --</option>
+                    {diagnoses.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
               </div>
 
               {/* ปรับแก้ 2: เพิ่มการตกลงรักษา */}
@@ -264,9 +427,17 @@ export default function CostEstimator() {
 
           {/* Search Card */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-            <h2 className="text-[0.65rem] font-black mb-3 text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <Search size={14} /> ค้นหารายการละเอียด ({currentRole === "pharma" ? "ยา" : "ค่าบริการ"})
-            </h2>
+            <div className="flex justify-between items-center mb-3">
+              <h2 className="text-[0.65rem] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                <Search size={14} /> ค้นหารายการละเอียด ({currentRole === "pharma" ? "ยา" : "ค่าบริการ"})
+              </h2>
+              <button 
+                onClick={() => navigate('/add-item', { state: { fromEstimator: true } })}
+                className="text-[0.6rem] font-black text-rose-600 bg-rose-50 px-2 py-1 rounded-md hover:bg-rose-100 flex items-center gap-1 transition-colors"
+              >
+                <Plus size={10} /> เพิ่มยา/รายการใหม่
+              </button>
+            </div>
             <div className="relative">
               <input type="text" className="w-full border border-slate-200 rounded-xl py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:border-blue-500" placeholder="ค้นหา..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
               <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300" />
@@ -275,7 +446,10 @@ export default function CostEstimator() {
                   {searchResults.map(item => (
                     <div key={item.itemCode} className="p-3 cursor-pointer flex justify-between items-center hover:bg-blue-50" onClick={() => handleAddItem(item)}>
                       <div className="flex-1 pr-4">
-                        <div className="font-bold text-slate-800 text-xs">{item.Common_name}</div>
+                        <div className="font-bold text-slate-800 text-xs">
+                          {item.Common_name}
+                          {item.isSet && <span className="ml-2 px-1.5 py-0.5 bg-indigo-100 text-indigo-600 rounded text-[0.5rem] font-black uppercase tracking-tighter">ITEM SET</span>}
+                        </div>
                         <div className="text-[0.55rem] text-slate-400 font-mono">{item.itemCode}</div>
                       </div>
                       <div className="text-right font-black text-blue-600 text-xs">{fmt(getPrice(item))}</div>
@@ -350,35 +524,35 @@ export default function CostEstimator() {
             {grandTotal > 0 && (
               <div className="mt-8 pt-6 border-t-2 border-slate-100">
 
-                {/* ปรับแก้ 3: แทรกกล่องเพิ่มจำนวนค่าตู้ (Prep Fee) ตรงนี้ */}
-                <div className="flex justify-between items-center mb-4 px-1 pb-4 border-b border-slate-100">
-                  <span className="text-xs font-bold text-slate-700">
-                    ค่าตู้+เวชภัณฑ์+ค่าเตรียมยา <span className="text-slate-400 font-medium">(@ {fmt(prepFeeRate)})</span>
-                  </span>
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center bg-white border border-slate-200 rounded-md overflow-hidden">
-                      <button onClick={() => setPrepFeeQty(Math.max(0, prepFeeQty - 1))} className="w-7 h-7 flex items-center justify-center text-slate-500 hover:bg-slate-50 no-print"><Minus size={14} /></button>
-                      <span className="w-8 text-center font-bold text-slate-700 text-xs">{prepFeeQty}</span>
-                      <button onClick={() => setPrepFeeQty(prepFeeQty + 1)} className="w-7 h-7 flex items-center justify-center text-slate-500 hover:bg-slate-50 no-print"><Plus size={14} /></button>
-                    </div>
-                    <span className="font-black text-slate-800 w-[60px] text-right text-[0.8rem]">{fmt(prepFeeTotal)}</span>
+                {/* Sub-summaries matching Excel structure */}
+                <div className="space-y-2 mb-6 px-1 border-b border-slate-100 pb-4">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-bold text-slate-500">รวมราคายา / cycle</span>
+                    <span className="font-bold text-slate-700">{fmt(drugTotal)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-bold text-slate-500">ค่าตู้ + เวชภัณฑ์ + ค่าเตรียมยา</span>
+                    <span className="font-bold text-slate-700">{fmt(prepTotal)}</span>
                   </div>
                 </div>
 
                 <div className="flex justify-between items-center mb-5 px-1">
-                  <div className="flex flex-col"><span className="text-[0.65rem] font-black text-slate-400 uppercase">Estimated Total</span><span className="text-xs font-bold text-slate-700">ประมาณการยอดรวมทั้งสิ้น</span></div>
+                  <div className="flex flex-col">
+                    <span className="text-[0.65rem] font-black text-slate-400 uppercase">Estimated Total</span>
+                    <span className="text-xs font-bold text-slate-700">ประมาณการยอดรวมทั้งสิ้นต่อรอบ</span>
+                  </div>
                   <div className="flex items-baseline gap-2">
                     <span className="text-[0.6rem] font-bold text-slate-400 uppercase">{courseCycles} Cycles ×</span>
-                    <span className="text-4xl font-black text-[#0F294D] font-mono tracking-tighter">{fmt(totalCourse)}</span>
+                    <span className="text-4xl font-black text-[#0F294D] font-mono tracking-tighter">{fmt(grandTotal)}</span>
                     <span className="text-xs font-bold text-slate-400">THB</span>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 no-print">
-                  <button onClick={handleSave} className="bg-white text-slate-900 py-3 rounded-xl font-black text-xs uppercase hover:bg-slate-50 border-2 border-slate-100 shadow-sm active:scale-95">
+                  <button onClick={() => handleSave()} className="bg-white text-slate-900 py-3 rounded-xl font-black text-xs uppercase hover:bg-slate-50 border-2 border-slate-100 shadow-sm active:scale-95">
                     {editingId ? "อัปเดตข้อมูล" : (currentRole === "pharma" ? "บันทึกและส่งต่อพยาบาล" : "บันทึกและส่งต่อเภสัช")}
                   </button>
-                  <button onClick={() => window.print()} className="bg-[#0F294D] text-white py-3 rounded-xl font-black text-xs uppercase hover:bg-slate-800 transition-all shadow-lg active:scale-95">พิมพ์ใบประเมินราคา</button>
+                  <button onClick={handleSaveAndPrint} className="bg-[#0F294D] text-white py-3 rounded-xl font-black text-xs uppercase hover:bg-slate-800 transition-all shadow-lg active:scale-95">บันทึกและพิมพ์ใบประเมินราคา</button>
                 </div>
               </div>
             )}
@@ -388,21 +562,4 @@ export default function CostEstimator() {
     </>
   );
 }
-
-// Minimal Helper for Table since it was a variable before
-function renderTable(items, t, c) {
-  const fmt = (v) => new Intl.NumberFormat("th-TH", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(v);
-  return (
-    <table className="w-full text-[0.7rem] border-collapse mb-2">
-      <tbody>
-        {items.map(i => (
-          <tr key={i.id} className="border-b border-slate-50">
-            <td className="py-1 text-slate-800 font-bold">{i.Common_name}</td>
-            <td className="py-1 text-right text-slate-400">{i.quantity} × {fmt(i[t] || i["OPD"])}</td>
-            <td className="py-1 text-right font-black text-slate-700">{fmt(i.quantity * (i[t] || i["OPD"]))}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
+

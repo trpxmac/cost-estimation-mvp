@@ -1,9 +1,9 @@
-﻿import { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 // ✅ เอา medicalItems ออก และเหลือแค่ getAllItems อย่างเดียว
 import { getAllItems } from '../data';
 import { useToast } from '../components/Toast';
-import { Search, ArrowUpDown, DollarSign, Tag, Plus } from 'lucide-react';
+import { Search, ArrowUpDown, DollarSign, Tag, Plus, Pencil } from 'lucide-react';
 
 const TYPES = ['OPD', 'IPD', 'OPDTR', 'IPDTR'];
 
@@ -149,23 +149,21 @@ export default function DrugPrices() {
                       : <span className="text-[0.65rem] px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-semibold">Drug</span>
                     }
                   </td>
-                  {TYPES.map(t => (
-                    <td key={t} className={`p-3 text-right font-semibold ${t === 'OPD' ? 'text-blue-700' : t === 'IPD' ? 'text-green-700' : t === 'OPDTR' ? 'text-amber-700' : 'text-purple-700'}`}>
-                      {formatCurrency(item[t])}
-                    </td>
-                  ))}
+                  {TYPES.map(t => {
+                    const val = item.isSet && item.items 
+                      ? item.items.reduce((s, sub) => s + (sub[t] || 0) * (sub.quantity || 1), 0)
+                      : item[t];
+                    return (
+                      <td key={t} className={`p-3 text-right font-semibold ${t === 'OPD' ? 'text-blue-700' : t === 'IPD' ? 'text-green-700' : t === 'OPDTR' ? 'text-amber-700' : 'text-purple-700'}`}>
+                        {formatCurrency(val)}
+                      </td>
+                    );
+                  })}
                   <td className="p-3 text-center">
                     <button
-                      onClick={() => {
-                        toast.success(
-                          'Item added to estimator',
-                          `${item.Common_name} added to cost estimation`,
-                          { duration: 1800 }
-                        );
-                        setTimeout(() => navigate('/estimator', { state: { preSelectedItem: item } }), 600);
-                      }}
-                      className="flex items-center gap-1 mx-auto px-3 py-1.5 bg-[#0F294D] text-white rounded-lg text-xs font-semibold hover:bg-slate-700 transition-colors">
-                      <Plus size={12} /> Add
+                      onClick={() => navigate('/add-item', { state: { editItem: item } })}
+                      className="flex items-center gap-1 mx-auto px-3 py-1.5 bg-white text-[#0F294D] border border-slate-200 rounded-lg text-xs font-semibold hover:bg-slate-50 transition-colors shadow-sm">
+                      <Pencil size={12} /> Edit
                     </button>
                   </td>
                 </tr>
