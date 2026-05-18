@@ -4,18 +4,36 @@
  * ============================================================
  */
 
-import { getAllItems, saveCustomDrug } from './data';
+import { getAllItems } from './data';
 import {
   getStoredDoctors, getStoredDiagnoses, getStoredAssessors,
-  addDoctor, addDiagnosis, addAssessor,
 } from './masterData';
 
-const IMED_BASE_URL = import.meta.env.VITE_IMED_API_URL || null;
+const API_BASE_URL = 'http://localhost:5000/api';
+
+// Helper to handle safe fetch with fallback to local storage
+async function safeFetch(url, options = {}, fallbackValue = null) {
+  try {
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options.headers || {})
+      }
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn(`API request to ${url} failed, using local fallback.`, err.message);
+  }
+  return typeof fallbackValue === 'function' ? fallbackValue() : fallbackValue;
+}
 
 export async function searchMedications(query) {
   if (!query?.trim()) return [];
-  const items = getAllItems();
-  return items.filter(item =>
+  const baseItems = await getAllMedications();
+  return baseItems.filter(item =>
     item.Common_name.toLowerCase().includes(query.toLowerCase()) ||
     item.itemCode.toLowerCase().includes(query.toLowerCase())
   );
@@ -27,6 +45,14 @@ export async function getPatientByHN(hn) {
 }
 
 export async function saveEstimation(record) {
+  const result = await safeFetch(`${API_BASE_URL}/estimations`, {
+    method: 'POST',
+    body: JSON.stringify(record)
+  });
+  
+  if (result) return result;
+
+  // Local Storage Fallback
   const existing = JSON.parse(localStorage.getItem('estimations') || '[]');
   existing.unshift(record);
   localStorage.setItem('estimations', JSON.stringify(existing));
@@ -34,15 +60,48 @@ export async function saveEstimation(record) {
 }
 
 export async function getEstimations() {
+  const result = await safeFetch(`${API_BASE_URL}/estimations`, {}, null);
+  if (result) {
+    // 💡 Auto-Migration Engine: If we have local storage data, migrate it to PostgreSQL!
+    const local = JSON.parse(localStorage.getItem('estimations') || '[]');
+    if (local.length > 0) {
+      console.log(`Migrating ${local.length} local estimations to PostgreSQL...`);
+      for (const record of local) {
+        const exists = result.some(r => r.id === record.id);
+        if (!exists) {
+          await safeFetch(`${API_BASE_URL}/estimations`, {
+            method: 'POST',
+            body: JSON.stringify(record)
+          });
+        }
+      }
+      localStorage.removeItem('estimations');
+      return await safeFetch(`${API_BASE_URL}/estimations`, {}, result);
+    }
+    return result;
+  }
+
+  // Local Storage Fallback
   return JSON.parse(localStorage.getItem('estimations') || '[]');
 }
 
 export async function getEstimationById(id) {
+  const result = await safeFetch(`${API_BASE_URL}/estimations/${id}`, {}, null);
+  if (result) return result;
+
+  // Local Storage Fallback
   const existing = JSON.parse(localStorage.getItem('estimations') || '[]');
   return existing.find(r => r.id === id) || null;
 }
 
 export async function deleteEstimation(id) {
+  const result = await safeFetch(`${API_BASE_URL}/estimations/${id}`, {
+    method: 'DELETE'
+  }, null);
+  
+  if (result) return true;
+
+  // Local Storage Fallback
   const existing = JSON.parse(localStorage.getItem('estimations') || '[]');
   const updated = existing.filter(r => r.id !== id);
   localStorage.setItem('estimations', JSON.stringify(updated));
@@ -50,6 +109,14 @@ export async function deleteEstimation(id) {
 }
 
 export async function updateEstimation(id, record) {
+  const result = await safeFetch(`${API_BASE_URL}/estimations/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(record)
+  });
+
+  if (result) return result;
+
+  // Local Storage Fallback
   const existing = JSON.parse(localStorage.getItem('estimations') || '[]');
   const updated = existing.map(r => r.id === id ? { ...record, id, updatedAt: new Date().toISOString() } : r);
   localStorage.setItem('estimations', JSON.stringify(updated));
@@ -71,16 +138,73 @@ export async function searchPatients(query) {
 }
 
 export async function getAllMedications() {
-  return getAllItems();
+  const dbCustom = await safeFetch(`${API_BASE_URL}/custom-drugs`, {}, []);
+  const staticItems = getAllItems();
+
+  // Merge them by itemCode, custom items overwrite static ones
+  const merged = [...staticItems];
+  dbCustom.forEach(custom => {
+    const idx = merged.findIndex(i => i.itemCode === custom.itemCode);
+    if (idx > -1) {
+      merged[idx] = custom;
+    } else {
+      merged.push(custom);
+    }
+  });
+
+  return merged;
 }
 
-export async function getDoctors()   { return getStoredDoctors(); }
-export async function getDiagnoses() { return getStoredDiagnoses(); }
-export async function getAssessors() { return getStoredAssessors(); }
+export async function getDoctors() {
+  const result = await safeFetch(`${API_BASE_URL}/master-data/doctor`, {}, null);
+  return result || getStoredDoctors();
+}
 
-export async function addNewDoctor(name)   { return addDoctor(name); }
-export async function addNewDiagnosis(name) { return addDiagnosis(name); }
-export async function addNewAssessor(name) { return addAssessor(name); }
+export async function getDiagnoses() {
+  const result = await safeFetch(`${API_BASE_URL}/master-data/diagnosis`, {}, null);
+  return result || getStoredDiagnoses();
+}
+
+export async function getAssessors() {
+  const result = await safeFetch(`${API_BASE_URL}/master-data/assessor`, {}, null);
+  return result || getStoredAssessors();
+}
+
+export async function addNewDoctor(name) {
+  const result = await safeFetch(`${API_BASE_URL}/master-data/doctor`, {
+    method: 'POST',
+    body: JSON.stringify({ value: name })
+  });
+  if (result) return name;
+  
+  // Fallback
+  const { addDoctor } = await import('./masterData');
+  return addDoctor(name);
+}
+
+export async function addNewDiagnosis(name) {
+  const result = await safeFetch(`${API_BASE_URL}/master-data/diagnosis`, {
+    method: 'POST',
+    body: JSON.stringify({ value: name })
+  });
+  if (result) return name;
+
+  // Fallback
+  const { addDiagnosis } = await import('./masterData');
+  return addDiagnosis(name);
+}
+
+export async function addNewAssessor(name) {
+  const result = await safeFetch(`${API_BASE_URL}/master-data/assessor`, {
+    method: 'POST',
+    body: JSON.stringify({ value: name })
+  });
+  if (result) return name;
+
+  // Fallback
+  const { addAssessor } = await import('./masterData');
+  return addAssessor(name);
+}
 
 export async function addNewDrug(drugData) {
   const drug = {
@@ -90,12 +214,6 @@ export async function addNewDrug(drugData) {
     IPD: Number(drugData.IPD) || 0,
     OPDTR: Number(drugData.OPDTR) || 0,
     IPDTR: Number(drugData.IPDTR) || 0,
-    TYPE2_OPD: Number(drugData.TYPE2_OPD) || Number(drugData.OPD) || 0,
-    TYPE2_IPD: Number(drugData.TYPE2_IPD) || Number(drugData.IPD) || 0,
-    TYPE4_OPD: Number(drugData.TYPE4_OPD) || Number(drugData.OPD) || 0,
-    TYPE4_IPD: Number(drugData.TYPE4_IPD) || Number(drugData.IPD) || 0,
-    TYPE4_OPDTR: Number(drugData.TYPE4_OPDTR) || Number(drugData.OPDTR) || 0,
-    TYPE4_IPDTR: Number(drugData.TYPE4_IPDTR) || Number(drugData.IPDTR) || 0,
     category: drugData.category || 'pharma',
     stock: drugData.stock !== undefined ? Number(drugData.stock) : 50,
     isSet: !!drugData.isSet,
@@ -103,5 +221,15 @@ export async function addNewDrug(drugData) {
     isPreparation: drugData.category === 'nurse',
     addedAt: new Date().toISOString(),
   };
+
+  const result = await safeFetch(`${API_BASE_URL}/custom-drugs`, {
+    method: 'POST',
+    body: JSON.stringify(drug)
+  });
+
+  if (result) return drug;
+
+  // Fallback
+  const { saveCustomDrug } = await import('./data');
   return saveCustomDrug(drug);
 }

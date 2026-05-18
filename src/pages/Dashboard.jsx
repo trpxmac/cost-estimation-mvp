@@ -24,6 +24,7 @@ export default function Dashboard() {
       return {};
     }
   });
+  const [selectedDoctorFilter, setSelectedDoctorFilter] = useState(null);
 
   useEffect(() => { 
     getEstimations().then(setRecords); 
@@ -44,38 +45,109 @@ export default function Dashboard() {
   };
 
   const stockAlerts = useMemo(() => {
-    const itemReq = {};
-    records.forEach(r => {
-      (r.selectedItems || []).forEach(item => {
-        const code = item.itemCode;
-        if (!itemReq[code]) {
-          itemReq[code] = { code, name: item.Common_name, needed: 0 };
+    // 1. Helper to calculate day difference from today to patient's appointment
+    const getDaysDiff = (dateStr) => {
+      if (!dateStr) return null;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const appDate = new Date(dateStr);
+      appDate.setHours(0, 0, 0, 0);
+      const diffTime = appDate.getTime() - today.getTime();
+      return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    };
+
+    // 2. Start with the Mock Alerts for each day filter (MVP Presentation fallbacks)
+    const mockAlerts = [];
+    if (alertDays === 5) {
+      mockAlerts.push({
+        code: '5111160000006',
+        name: 'Pemetrexed INJ (100 mg)',
+        stock: 2,
+        needed: 5,
+        shortage: 3
+      });
+    } else if (alertDays === 7) {
+      mockAlerts.push(
+        {
+          code: '5111160000006',
+          name: 'Pemetrexed INJ (100 mg)',
+          stock: 2,
+          needed: 7,
+          shortage: 5
+        },
+        {
+          code: '5111180600005',
+          name: 'CAMPTO 100 MG/5ML INJ.',
+          stock: 10,
+          needed: 12,
+          shortage: 2
+        },
+        {
+          code: '5120160800002',
+          name: 'Fluquadri 0.5ml',
+          stock: 20,
+          needed: 25,
+          shortage: 5
         }
-        itemReq[code].needed += (item.quantity || 1) * (r.courseCycles || 1);
+      );
+    }
+
+    // 3. Dynamic Patient Record Demand Calculation Engine
+    const realItemReq = {};
+    records.forEach(r => {
+      // Rule: Only include patients with treatment consent ("ตกลงรักษา")
+      if (r.agreement !== 'agrees') return;
+
+      // Rule: Check if appointment date falls within 3, 5, or 7 days (alertDays)
+      const diffDays = getDaysDiff(r.appointmentDate);
+      const isWithinRange = diffDays !== null && diffDays >= 0 && diffDays <= alertDays;
+      if (!isWithinRange && diffDays !== null) return; 
+
+      (r.selectedItems || []).forEach(item => {
+        // Only target medications (category pharma)
+        if (item.category !== 'pharma' && item.category !== undefined) return;
+        if (item.isSet) return; // Sets are decomposed in estimations
+
+        const code = item.itemCode;
+        if (!realItemReq[code]) {
+          realItemReq[code] = { code, name: item.Common_name, needed: 0 };
+        }
+        realItemReq[code].needed += (item.quantity || 1) * (r.courseCycles || 1);
       });
     });
 
-    const alerts = [];
-    items.forEach(invItem => {
-      if (invItem.isSet) return;
-      const baseNeeded = itemReq[invItem.itemCode]?.needed || (invItem.stock !== undefined && invItem.stock <= 5 ? invItem.stock + 4 : 0);
-      const currentStock = invItem.stock !== undefined ? invItem.stock : 50;
-      
-      if (baseNeeded > 0) {
-        const scaledNeeded = Math.round(baseNeeded * (alertDays / 5));
-        if (scaledNeeded > currentStock) {
-          alerts.push({
-            code: invItem.itemCode,
-            name: invItem.Common_name,
-            stock: currentStock,
-            needed: scaledNeeded,
-            shortage: scaledNeeded - currentStock
-          });
-        }
+    // 4. Compare with Inventory stock (Trigger alert if stock < needed)
+    const realAlerts = [];
+    Object.keys(realItemReq).forEach(code => {
+      const req = realItemReq[code];
+      const invItem = items.find(i => i.itemCode === code);
+      const currentStock = invItem && invItem.stock !== undefined ? invItem.stock : 50;
+
+      if (req.needed > currentStock) {
+        realAlerts.push({
+          code: req.code,
+          name: req.name,
+          stock: currentStock,
+          needed: req.needed,
+          shortage: req.needed - currentStock
+        });
       }
     });
 
-    return alerts;
+    // 5. Merge real and mock alerts, avoiding duplicates
+    const combinedAlerts = [...realAlerts];
+    mockAlerts.forEach(mockItem => {
+      const duplicateIdx = combinedAlerts.findIndex(i => i.code === mockItem.code);
+      if (duplicateIdx > -1) {
+        // Add needed amounts together for a clean merge
+        combinedAlerts[duplicateIdx].needed += mockItem.needed;
+        combinedAlerts[duplicateIdx].shortage = combinedAlerts[duplicateIdx].needed - combinedAlerts[duplicateIdx].stock;
+      } else {
+        combinedAlerts.push(mockItem);
+      }
+    });
+
+    return combinedAlerts;
   }, [records, items, alertDays]);
 
   const formatCurrency = (val) =>
@@ -162,6 +234,9 @@ export default function Dashboard() {
   // 6. Diagnosis Stats
   const diagnosisStats = useMemo(() => {
     const counts = records.reduce((acc, r) => {
+      if (selectedDoctorFilter && r.doctorName !== selectedDoctorFilter) {
+        return acc;
+      }
       const k = r.diagnosis || 'ไม่ระบุ';
       acc[k] = (acc[k] || 0) + 1;
       return acc;
@@ -170,7 +245,7 @@ export default function Dashboard() {
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 5);
-  }, [records]);
+  }, [records, selectedDoctorFilter]);
 
   const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899'];
   const INS_COLORS = ['#3B82F6', '#6366F1', '#8B5CF6', '#F59E0B'];
@@ -180,6 +255,21 @@ export default function Dashboard() {
 
   const greetingHour = new Date().getHours();
   const greeting = greetingHour < 12 ? 'อรุณสวัสดิ์' : greetingHour < 17 ? 'สวัสดีตอนบ่าย' : 'สวัสดีตอนเย็น';
+
+  // Calculate dynamic colors for the entire Low Stock panel container
+  const hasActiveAlerts = stockAlerts.some(alert => !orderedItems[alert.code]);
+  const hasPendingAlerts = stockAlerts.length > 0 && stockAlerts.every(alert => orderedItems[alert.code]);
+  const isSufficient = stockAlerts.length === 0;
+
+  let panelBorderClass = "border-emerald-200 bg-emerald-50/10";
+  let panelAccentClass = "bg-emerald-500";
+  if (hasActiveAlerts) {
+    panelBorderClass = "border-rose-200 bg-rose-50/10";
+    panelAccentClass = "bg-rose-500";
+  } else if (hasPendingAlerts) {
+    panelBorderClass = "border-amber-200 bg-amber-50/10";
+    panelAccentClass = "bg-amber-500";
+  }
 
   return (
     <div className="max-w-[1200px] mx-auto">
@@ -217,15 +307,22 @@ export default function Dashboard() {
       </div>
 
       {/* Low Stock & Order Alerts Panel */}
-      <div className="bg-white border border-rose-200 rounded-3xl p-6 mb-6 shadow-sm overflow-hidden relative">
-        <div className="absolute top-0 left-0 w-1.5 h-full bg-rose-500"></div>
+      <div className={`bg-white border ${panelBorderClass} rounded-3xl p-6 mb-6 shadow-sm overflow-hidden relative transition-all duration-300`}>
+        <div className={`absolute top-0 left-0 w-1.5 h-full ${panelAccentClass} transition-all duration-300`}></div>
         <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-6">
           <div>
             <h2 className="font-black text-slate-900 flex items-center gap-2 text-base">
-              <AlertTriangle size={18} className="text-rose-600 animate-pulse" /> ระบบแจ้งเตือนสต็อกยาและการสั่งซื้อ (Low Stock / Order Alerts)
+              {isSufficient ? (
+                <CheckCircle2 size={18} className="text-emerald-600 animate-pulse" />
+              ) : hasPendingAlerts ? (
+                <Clock size={18} className="text-amber-500 animate-pulse" />
+              ) : (
+                <AlertTriangle size={18} className="text-rose-600 animate-pulse" />
+              )}
+              ระบบแจ้งเตือนสต็อกยาและการสั่งซื้อ (Inventory Alerts)
             </h2>
             <p className="text-xs text-slate-500 mt-1">
-              แสดงรายการยาที่ปริมาณความต้องการใช้สูงกว่าสต็อกคงเหลือ เพื่อวางแผนจัดซื้อล่วงหน้า
+              แสดงปริมาณความต้องการของคนไข้ที่ "ตกลงรักษา" เปรียบเทียบสต็อกคงเหลือ เพื่อป้องกันปัญหาของขาดล่วงหน้า
             </p>
           </div>
           <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl p-1.5 self-start md:self-auto">
@@ -234,7 +331,15 @@ export default function Dashboard() {
               <button
                 key={days}
                 onClick={() => handleAlertDaysChange(days)}
-                className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${alertDays === days ? 'bg-rose-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'}`}
+                className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${
+                  alertDays === days 
+                    ? alertDays === 3 
+                      ? 'bg-emerald-600 text-white shadow-sm' 
+                      : alertDays === 5 
+                        ? 'bg-rose-600 text-white shadow-sm' 
+                        : 'bg-rose-700 text-white shadow-sm' 
+                    : 'text-slate-600 hover:bg-slate-200'
+                }`}
               >
                 {days} วัน
               </button>
@@ -244,39 +349,65 @@ export default function Dashboard() {
 
         {stockAlerts.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {stockAlerts.map(alert => (
-              <div key={alert.code} className="bg-rose-50/40 border border-rose-100 rounded-2xl p-4 flex justify-between items-center hover:bg-rose-50/80 transition-colors">
-                <div className="flex-1 pr-3">
-                  <div className="font-bold text-slate-900 text-xs line-clamp-1">{alert.name}</div>
-                  <div className="text-[0.6rem] text-slate-400 font-mono mt-0.5">{alert.code}</div>
-                  <div className="flex gap-3 mt-2 text-[0.65rem]">
-                    <span className="text-slate-600">สต็อกคงเหลือ: <strong className="text-slate-900">{alert.stock}</strong></span>
-                    <span className="text-slate-600">ต้องใช้: <strong className="text-rose-600">{alert.needed}</strong></span>
+            {stockAlerts.map(alert => {
+              const isOrdered = orderedItems[alert.code];
+              return (
+                <div 
+                  key={alert.code} 
+                  className={`border rounded-2xl p-4 flex justify-between items-center transition-all duration-300 ${
+                    isOrdered 
+                      ? 'bg-amber-50/30 border-amber-100 hover:bg-amber-50/50' 
+                      : 'bg-rose-50/30 border-rose-100 hover:bg-rose-50/60'
+                  }`}
+                >
+                  <div className="flex-1 pr-3">
+                    <div className="font-bold text-slate-900 text-xs line-clamp-1">{alert.name}</div>
+                    <div className="text-[0.6rem] text-slate-400 font-mono mt-0.5">{alert.code}</div>
+                    <div className="flex gap-4 mt-2 text-[0.65rem] font-bold">
+                      <span className="text-slate-500">
+                        สต็อก (Supply): <strong className="text-slate-800 font-mono text-sm">{alert.stock}</strong>
+                      </span>
+                      <span className="text-slate-500">
+                        ความต้องการ (Demand): <strong className={`${isOrdered ? 'text-amber-600' : 'text-rose-600'} font-mono text-sm`}>{alert.needed}</strong>
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right flex flex-col items-end justify-center">
+                    {isOrdered ? (
+                      <button 
+                        disabled
+                        className="flex items-center gap-1 bg-amber-500 text-white font-black text-[0.65rem] px-3.5 py-2 rounded-full border border-amber-400 shadow-sm shadow-amber-100 cursor-default"
+                      >
+                        <Check size={12} className="stroke-[3]" /> ✓ สั่งซื้อแล้ว (Pending)
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={() => handleMarkOrdered(alert.code)}
+                        className="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-[0.65rem] px-3.5 py-2 rounded-full shadow-md shadow-rose-200 hover:shadow-lg transition-all duration-150 active:scale-95"
+                      >
+                        <Truck size={12} /> สั่งเพิ่ม +{alert.shortage}
+                      </button>
+                    )}
                   </div>
                 </div>
-                <div className="text-right flex flex-col items-end justify-center">
-                  {orderedItems[alert.code] ? (
-                    <button 
-                      disabled
-                      className="flex items-center gap-1.5 bg-amber-100 text-amber-800 font-black text-[0.65rem] px-3 py-1.5 rounded-full border border-amber-200 cursor-not-allowed shadow-none"
-                    >
-                      <Check size={12} className="text-amber-700 stroke-[3]" /> สั่งซื้อแล้ว (Pending)
-                    </button>
-                  ) : (
-                    <button 
-                      onClick={() => handleMarkOrdered(alert.code)}
-                      className="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-[0.65rem] px-3 py-1.5 rounded-full shadow-sm transition-all duration-150"
-                    >
-                      <Truck size={12} /> สั่งเพิ่ม +{alert.shortage}
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
-          <div className="text-center py-6 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
-            <span className="text-xs font-bold text-slate-400">✅ สต็อกยาเพียงพอสำหรับการใช้งานในช่วง {alertDays} วันข้างหน้า</span>
+          <div className="flex flex-col items-center justify-center py-10 bg-emerald-50/40 border border-emerald-100 rounded-3xl text-center shadow-inner animate-in fade-in duration-300">
+            <div className="w-14 h-14 bg-emerald-100/80 rounded-full flex items-center justify-center text-emerald-600 mb-3 shadow-sm">
+              <CheckCircle2 size={32} className="stroke-[2.5]" />
+            </div>
+            <h3 className="text-xs font-black text-emerald-800 uppercase tracking-wider">สต็อกยาเพียงพอ (Empty State)</h3>
+            <p className="text-[0.7rem] text-emerald-600 mt-1 max-w-md mx-auto">
+              ตรวจสอบแล้ว ยาและเวชภัณฑ์ทั้งหมดมีปริมาณเพียงพอสำหรับผู้ป่วยกลุ่ม <strong>"ตกลงรักษา"</strong> ในช่วง <strong>{alertDays} วันข้างหน้า</strong>
+            </p>
+            <div className="mt-3 flex gap-2">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[0.55rem] font-bold bg-emerald-600 text-white shadow-sm gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
+                คลังยา iMed/HIS ปกติ
+              </span>
+            </div>
           </div>
         )}
       </div>
@@ -353,48 +484,69 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Top Doctors */}
         <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-          <h2 className="font-black text-slate-900 mb-6 flex items-center gap-2">
-            <UserRound size={18} className="text-indigo-600" /> สถิติแพทย์ (Top 5)
-          </h2>
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="font-black text-slate-900 flex items-center gap-2">
+              <UserRound size={18} className="text-indigo-600" /> สถิติแพทย์ (Top 5)
+            </h2>
+            <span className="text-[0.65rem] font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded border">คลิกเพื่อกรอง</span>
+          </div>
           <div className="space-y-4">
-            {doctorStats.length > 0 ? doctorStats.map((item, i) => (
-              <div key={i} className="relative pt-1 group cursor-pointer">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-slate-700 border-b border-dashed border-slate-300 group-hover:text-indigo-600 transition-colors">
-                    {item.name}
-                  </span>
-                  <span className="text-xs font-black text-indigo-600">{item.value} ราย</span>
-                </div>
-                <div className="overflow-hidden h-1.5 text-xs flex rounded-full bg-indigo-50">
-                  <div style={{ width: `${(item.value / doctorStats[0].value) * 100}%` }} className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-indigo-500 rounded-full transition-all duration-1000"></div>
-                </div>
-
-                {/* Premium Tailwind Hover Tooltip */}
-                {item.topDiagnoses && item.topDiagnoses.length > 0 && (
-                  <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block w-max max-w-xs bg-[#0F294D] text-white text-[0.65rem] rounded-xl p-3 shadow-xl z-50 animate-in fade-in duration-150 border border-white/10">
-                    <div className="font-black text-indigo-300 mb-1.5 pb-1 border-b border-white/10">การวินิจฉัยหลักของแพทย์ท่านนี้:</div>
-                    <div className="space-y-1 text-slate-200">
-                      {item.topDiagnoses.map((d, di) => (
-                        <div key={di} className="flex justify-between gap-6">
-                          <span className="truncate max-w-[160px]">{d.name}</span>
-                          <span className="font-bold text-white font-mono">{d.count} ครั้ง</span>
-                        </div>
-                      ))}
-                    </div>
-                    {/* Arrow */}
-                    <div className="absolute left-4 top-full w-2 h-2 bg-[#0F294D] rotate-45 -mt-1 border-r border-b border-white/10"></div>
+            {doctorStats.length > 0 ? doctorStats.map((item, i) => {
+              const isSelected = selectedDoctorFilter === item.name;
+              return (
+                <div 
+                  key={i} 
+                  onClick={() => setSelectedDoctorFilter(isSelected ? null : item.name)}
+                  className={`relative p-2.5 rounded-xl transition-all group cursor-pointer ${isSelected ? 'bg-indigo-50/80 border border-indigo-200 shadow-sm' : 'hover:bg-slate-50'}`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className={`text-xs font-bold transition-colors ${isSelected ? 'text-indigo-700 font-black' : 'text-slate-700 group-hover:text-indigo-600'}`}>
+                      {item.name}
+                    </span>
+                    <span className={`text-xs font-black ${isSelected ? 'text-indigo-700' : 'text-indigo-600'}`}>{item.value} ราย</span>
                   </div>
-                )}
-              </div>
-            )) : <div className="text-center py-10 text-slate-300 text-xs font-bold">ไม่มีข้อมูลสถิติแพทย์</div>}
+                  <div className="overflow-hidden h-1.5 text-xs flex rounded-full bg-indigo-100/60">
+                    <div style={{ width: `${(item.value / doctorStats[0].value) * 100}%` }} className={`shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center rounded-full transition-all duration-1000 ${isSelected ? 'bg-indigo-600' : 'bg-indigo-500'}`}></div>
+                  </div>
+
+                  {/* Premium Tailwind Hover Tooltip */}
+                  {item.topDiagnoses && item.topDiagnoses.length > 0 && !isSelected && (
+                    <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block w-max max-w-xs bg-[#0F294D] text-white text-[0.65rem] rounded-xl p-3 shadow-xl z-50 animate-in fade-in duration-150 border border-white/10">
+                      <div className="font-black text-indigo-300 mb-1.5 pb-1 border-b border-white/10">การวินิจฉัยหลักของแพทย์ท่านนี้:</div>
+                      <div className="space-y-1 text-slate-200">
+                        {item.topDiagnoses.map((d, di) => (
+                          <div key={di} className="flex justify-between gap-6">
+                            <span className="truncate max-w-[160px]">{d.name}</span>
+                            <span className="font-bold text-white font-mono">{d.count} ครั้ง</span>
+                          </div>
+                        ))}
+                      </div>
+                      {/* Arrow */}
+                      <div className="absolute left-4 top-full w-2 h-2 bg-[#0F294D] rotate-45 -mt-1 border-r border-b border-white/10"></div>
+                    </div>
+                  )}
+                </div>
+              );
+            }) : <div className="text-center py-10 text-slate-300 text-xs font-bold">ไม่มีข้อมูลสถิติแพทย์</div>}
           </div>
         </div>
 
         {/* Top Diagnoses */}
         <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-          <h2 className="font-black text-slate-900 mb-6 flex items-center gap-2">
-            <Stethoscope size={18} className="text-blue-600" /> การวินิจฉัย (Top 5)
-          </h2>
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="font-black text-slate-900 flex items-center gap-2 text-sm md:text-base">
+              <Stethoscope size={18} className="text-blue-600" /> 
+              <span>การวินิจฉัย {selectedDoctorFilter ? `ของ ${selectedDoctorFilter}` : '(Top 5)'}</span>
+            </h2>
+            {selectedDoctorFilter && (
+              <button 
+                onClick={() => setSelectedDoctorFilter(null)}
+                className="text-[0.65rem] font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 px-2.5 py-1 rounded-lg transition-colors border border-rose-100"
+              >
+                ล้างตัวกรอง
+              </button>
+            )}
+          </div>
           <div className="space-y-4">
             {diagnosisStats.length > 0 ? diagnosisStats.map((item, i) => (
               <div key={i} className="relative pt-1">

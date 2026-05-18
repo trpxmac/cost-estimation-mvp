@@ -26,6 +26,11 @@ export default function CostEstimator() {
   // --- New Features State ---
   const [insurance, setInsurance] = useState("Self pay");
   const [agreement, setAgreement] = useState("agrees"); // "agrees" | "declines"
+  const [appointmentDate, setAppointmentDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 2);
+    return d.toISOString().split("T")[0];
+  });
 
   // --- Role & Totals ---
   const [currentRole, setCurrentRole] = useState(() => {
@@ -75,6 +80,11 @@ export default function CostEstimator() {
       setCourseCycles(r.courseCycles || 1);
       setInsurance(r.insurance || "Self pay");
       setAgreement(r.agreement || "agrees");
+      setAppointmentDate(r.appointmentDate || (() => {
+        const d = new Date();
+        d.setDate(d.getDate() + 2);
+        return d.toISOString().split("T")[0];
+      })());
       setSelectedItems(r.selectedItems || []);
       setEditingId(r.id);
     } else {
@@ -302,7 +312,7 @@ export default function CostEstimator() {
         id: recordId,
         savedAt: new Date().toISOString(),
         hn, vnan, patientName, doctorName, diagnosis, assessor, bsa,
-        patientType, billingRight, insurance, agreement,
+        patientType, billingRight, insurance, agreement, appointmentDate,
         prepFeeTotal: prpTotal,
         courseCycles,
         selectedItems: finalItems,
@@ -441,11 +451,15 @@ export default function CostEstimator() {
                 </div>
               </div>
 
-              {/* ปรับแก้ 2: เพิ่มการตกลงรักษา */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* ปรับแก้ 2: เพิ่มการตกลงรักษาและวันที่นัดหมาย */}
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className={lblCls}>BSA (m²)</label>
                   <input type="number" className={inputCls} value={bsa} onChange={e => setBsa(e.target.value)} />
+                </div>
+                <div>
+                  <label className={lblCls}>วันที่นัดหมาย</label>
+                  <input type="date" className={inputCls} value={appointmentDate} onChange={e => setAppointmentDate(e.target.value)} />
                 </div>
                 <div>
                   <label className={lblCls}>ผป. ตกลงรักษาไหม?</label>
@@ -534,6 +548,10 @@ export default function CostEstimator() {
               <div className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400">แพทย์:</span><span className="font-black">{doctorName || "-"}</span></div>
               <div className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400">Diagnosis:</span><span className="font-black">{diagnosis || "-"}</span></div>
               <div className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400">สิทธิการรักษา:</span><span className="font-black">{insurance}</span></div>
+              <div className="flex justify-between border-b border-slate-50 pb-1">
+                <span className="text-slate-400">วันที่นัดหมาย:</span>
+                <span className="font-black text-indigo-700">{appointmentDate ? new Date(appointmentDate).toLocaleDateString('th-TH') : "-"}</span>
+              </div>
               <div className="flex justify-between border-b border-slate-50 pb-1">
                 <span className="text-slate-400">การตกลงรักษา:</span>
                 <span className={`font-black ${agreement === "agrees" ? "text-green-600" : "text-red-500"}`}>{agreement === "agrees" ? "ตกลงรักษา" : "ไม่ตกลง"}</span>
