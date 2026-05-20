@@ -135,19 +135,47 @@ export default function CostEstimator() {
 
   const handleAddItem = (item) => {
     if (item.isSet && item.items) {
-      const instanceId = Date.now().toString() + Math.random();
-      const exploded = item.items.map(subItem => ({
-        ...subItem,
-        id: Date.now().toString() + Math.random(),
-        quantity: subItem.quantity || 1,
-        dose: "",
-        setInstanceId: instanceId,
-        parentSetName: item.Common_name
-      }));
-      setSelectedItems(prev => [...prev, ...exploded]);
+      // Determine outcome BEFORE setState to avoid calling toast inside updater
+      // (updater runs twice in React Strict Mode, causing double-toast)
+      setSelectedItems(prev => {
+        const existingGid = prev.find(i => i.setInstanceId && i.parentSetName === item.Common_name)?.setInstanceId;
+        if (existingGid) {
+          // Merge: increment qty of every sub-item in the existing group
+          return prev.map(i =>
+            i.setInstanceId === existingGid
+              ? { ...i, quantity: i.quantity + 1 }
+              : i
+          );
+        }
+        // New instance
+        const instanceId = Date.now().toString() + Math.random();
+        const exploded = item.items.map(subItem => ({
+          ...subItem,
+          id: Date.now().toString() + Math.random(),
+          quantity: subItem.quantity || 1,
+          dose: "",
+          setInstanceId: instanceId,
+          parentSetName: item.Common_name
+        }));
+        return [...prev, ...exploded];
+      });
+      // Toast is fired OUTSIDE the updater — runs exactly once
       toast.success(`เพิ่มชุดรายการ ${item.itemCode} แล้ว (${item.items.length} รายการ)`);
     } else {
-      setSelectedItems(prev => [...prev, { ...item, id: Date.now().toString() + Math.random(), quantity: 1, dose: "" }]);
+      setSelectedItems(prev => {
+        const existingIndex = prev.findIndex(
+          i => i.itemCode === item.itemCode && !i.setInstanceId
+        );
+        if (existingIndex >= 0) {
+          const updated = [...prev];
+          updated[existingIndex] = {
+            ...updated[existingIndex],
+            quantity: updated[existingIndex].quantity + 1,
+          };
+          return updated;
+        }
+        return [...prev, { ...item, id: Date.now().toString() + Math.random(), quantity: 1, dose: "" }];
+      });
     }
     setSearchQuery("");
   };
