@@ -3,16 +3,24 @@ import { useNavigate } from 'react-router-dom';
 import { getEstimations, deleteEstimation } from '../api';
 import mockData from '../mockData.json';
 import { useToast } from '../components/Toast';
+import RecordDetailModal from '../components/RecordDetailModal';
 import {
   Search, Calculator, ClipboardList, Trash2,
-  FileText, Phone, User, Pencil, Pill, Stethoscope, ClipboardCheck, X
+  FileText, User, Pencil, Pill, Stethoscope, ClipboardCheck
 } from 'lucide-react';
 
 const mockPatients = mockData.patients;
 
+const STATUS_STYLES = {
+  "สมบูรณ์": "bg-green-100 text-green-700 border-green-200",
+  "รอพยาบาล": "bg-blue-100 text-blue-700 border-blue-200",
+  "รอเภสัช": "bg-indigo-100 text-indigo-700 border-indigo-200",
+};
+
 export default function PatientRecords() {
   const navigate = useNavigate();
   const toast = useToast();
+
   const [savedRecords, setSavedRecords] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('patients');
@@ -52,7 +60,7 @@ export default function PatientRecords() {
       setSavedRecords(prev => prev.filter(r => r.id !== id));
       if (selectedRecord?.id === id) setSelectedRecord(null);
       toast.success('ลบสำเร็จ');
-    } catch (e) {
+    } catch {
       toast.error('ลบไม่สำเร็จ');
     }
   };
@@ -63,17 +71,9 @@ export default function PatientRecords() {
   const formatDate = (iso) =>
     new Date(iso).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
 
-  const handleEdit = (record) => {
-    navigate('/estimator', { state: { editRecord: record } });
-  };
-
   const handleEstimateFromPatient = (patient) => {
-    // Determine billingRight based on nationality
     let billingRight = patient.type || 'OPD';
-    if (patient.nationality === 'INTERNATIONAL') {
-      billingRight += 'TR'; // Becomes OPDTR or IPDTR
-    }
-
+    if (patient.nationality === 'INTERNATIONAL') billingRight += 'TR';
     navigate('/estimator', {
       state: {
         hn: patient.patient_id,
@@ -81,13 +81,14 @@ export default function PatientRecords() {
         doctorName: patient.doctor || '',
         insuranceType: patient.insurance || 'self pay',
         patientType: patient.type || 'OPD',
-        billingRight: billingRight
+        billingRight,
       }
     });
   };
 
   return (
     <div className="max-w-[1200px] mx-auto">
+      {/* Search + Tab Bar */}
       <div className="bg-white border border-slate-200 rounded-xl p-6 mb-6 shadow-sm">
         <div className="relative mb-4">
           <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -96,7 +97,6 @@ export default function PatientRecords() {
             placeholder="ค้นหาด้วย HN, ชื่อคนไข้, หรือเบอร์โทร..."
             value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
         </div>
-
         <div className="flex gap-2">
           <button onClick={() => setActiveTab('patients')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'patients' ? 'bg-[#0F294D] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
@@ -109,6 +109,7 @@ export default function PatientRecords() {
         </div>
       </div>
 
+      {/* ===== Tab: Patients (iMed) ===== */}
       {activeTab === 'patients' ? (
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
@@ -147,7 +148,9 @@ export default function PatientRecords() {
           </div>
         </div>
       ) : (
+        /* ===== Tab: History ===== */
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          {/* Record List */}
           <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl shadow-sm overflow-y-auto max-h-[600px]">
             {filteredHistory.map(r => (
               <div key={r.id} onClick={() => setSelectedRecord(r)}
@@ -166,15 +169,9 @@ export default function PatientRecords() {
                   <div className="text-right">
                     <div className="text-sm font-black text-[#0F294D]">{formatCurrency(r.totalCourse)}</div>
                     <div className="flex flex-col items-end gap-1 mt-1">
-                      <span className={`text-[0.55rem] px-2 py-0.5 rounded-full font-black uppercase border ${
-                        r.status === "สมบูรณ์" ? "bg-green-100 text-green-700 border-green-200" :
-                        r.status === "รอพยาบาล" ? "bg-blue-100 text-blue-700 border-blue-200" :
-                        r.status === "รอเภสัช" ? "bg-indigo-100 text-indigo-700 border-indigo-200" :
-                        "bg-slate-100 text-slate-500 border-slate-200"
-                      }`}>
+                      <span className={`text-[0.55rem] px-2 py-0.5 rounded-full font-black uppercase border ${STATUS_STYLES[r.status] || "bg-slate-100 text-slate-500 border-slate-200"}`}>
                         {r.status || "รอตรวจสอบ"}
                       </span>
-                      <span className="text-[0.55rem] text-slate-400 font-bold uppercase">ประวัติการประเมิน</span>
                     </div>
                   </div>
                 </div>
@@ -182,6 +179,7 @@ export default function PatientRecords() {
             ))}
           </div>
 
+          {/* Record Detail */}
           <div className="lg:col-span-3">
             {selectedRecord ? (
               <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
@@ -195,24 +193,18 @@ export default function PatientRecords() {
                       </div>
                     )}
                     <div className="flex gap-2 mt-3">
-
-                      <span className={`text-[0.65rem] px-2.5 py-1 rounded font-black uppercase border ${
-                        selectedRecord.status === "สมบูรณ์" ? "bg-green-100 text-green-700 border-green-200" :
-                        selectedRecord.status === "รอพยาบาล" ? "bg-blue-100 text-blue-700 border-blue-200" :
-                        selectedRecord.status === "รอเภสัช" ? "bg-indigo-100 text-indigo-700 border-indigo-200" :
-                        "bg-slate-100 text-slate-500 border-slate-200"
-                      }`}>
+                      <span className={`text-[0.65rem] px-2.5 py-1 rounded font-black uppercase border ${STATUS_STYLES[selectedRecord.status] || "bg-slate-100 text-slate-500 border-slate-200"}`}>
                         {selectedRecord.status || "รอตรวจสอบ"}
                       </span>
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => handleEdit(selectedRecord)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-100"><Pencil size={18}/></button>
-                    <button onClick={() => deleteRecord(selectedRecord.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg border border-red-100"><Trash2 size={18}/></button>
+                    <button onClick={() => navigate('/estimator', { state: { editRecord: selectedRecord } })} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-100"><Pencil size={18} /></button>
+                    <button onClick={() => deleteRecord(selectedRecord.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg border border-red-100"><Trash2 size={18} /></button>
                   </div>
                 </div>
-                
-                {/* Grouped Summary Section */}
+
+                {/* Category Summaries */}
                 <div className="space-y-4 mb-8">
                   <div className="p-4 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -222,9 +214,7 @@ export default function PatientRecords() {
                         <div className="text-xs font-bold text-slate-700">{selectedRecord.selectedItems?.filter(i => i.category === "pharma" || !i.category).length || 0} รายการ</div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-sm font-black text-blue-700">{formatCurrency(selectedRecord.pharmaTotal)}</div>
-                    </div>
+                    <div className="text-sm font-black text-blue-700">{formatCurrency(selectedRecord.pharmaTotal)}</div>
                   </div>
 
                   <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-between">
@@ -235,9 +225,7 @@ export default function PatientRecords() {
                         <div className="text-xs font-bold text-slate-700">{selectedRecord.selectedItems?.filter(i => i.category === "nurse").length || 0} รายการ</div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-sm font-black text-indigo-700">{formatCurrency(selectedRecord.nurseTotal)}</div>
-                    </div>
+                    <div className="text-sm font-black text-indigo-700">{formatCurrency(selectedRecord.nurseTotal)}</div>
                   </div>
 
                   {selectedRecord.prepFeeTotal > 0 && (
@@ -249,13 +237,11 @@ export default function PatientRecords() {
                           <div className="text-xs font-bold text-slate-700">{selectedRecord.prepFeeQty} ครั้ง</div>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className="text-sm font-black text-slate-700">{formatCurrency(selectedRecord.prepFeeTotal)}</div>
-                      </div>
+                      <div className="text-sm font-black text-slate-700">{formatCurrency(selectedRecord.prepFeeTotal)}</div>
                     </div>
                   )}
 
-                  <button 
+                  <button
                     onClick={() => setShowModal(true)}
                     className="w-full py-2.5 rounded-xl border-2 border-dashed border-slate-200 text-slate-400 text-xs font-black hover:bg-slate-50 hover:border-slate-300 transition-all flex items-center justify-center gap-2"
                   >
@@ -278,69 +264,9 @@ export default function PatientRecords() {
         </div>
       )}
 
-      {/* Modal for Detailed Item List */}
+      {/* Detail Modal */}
       {showModal && selectedRecord && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col">
-            <div className="p-6 border-b flex justify-between items-center bg-slate-50/50">
-              <div>
-                <h3 className="font-black text-xl text-[#0F294D]">รายละเอียดรายการ</h3>
-                <p className="text-xs text-slate-400 font-bold uppercase mt-1">HN: {selectedRecord.hn} • {selectedRecord.patientName}</p>
-              </div>
-              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400"><X size={24}/></button>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto p-6 space-y-8">
-              {/* Pharma Section */}
-              <section>
-                <h4 className="text-[0.65rem] font-black text-blue-600 uppercase tracking-widest mb-4 flex items-center gap-2">
-                  <Pill size={14} /> รายการยาและเวชภัณฑ์
-                </h4>
-                <div className="divide-y border rounded-2xl overflow-hidden">
-                  {selectedRecord.selectedItems?.filter(i => i.category === "pharma" || !i.category).map(item => (
-                    <div key={item.id} className="p-3 flex justify-between items-center bg-white">
-                      <div>
-                        <div className="font-bold text-slate-800 text-sm">{item.Common_name}</div>
-                        <div className="text-[0.65rem] text-slate-400 font-bold">{item.quantity} units {item.dose ? `• ${item.dose}` : ''}</div>
-                      </div>
-                      <div className="text-right font-mono text-sm font-black text-slate-700">
-                        {formatCurrency((item[selectedRecord.billingRight] || item["OPD"]) * item.quantity)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              {/* Nurse Section */}
-              <section>
-                <h4 className="text-[0.65rem] font-black text-indigo-600 uppercase tracking-widest mb-4 flex items-center gap-2">
-                  <Stethoscope size={14} /> รายการพยาบาลและค่าบริการ
-                </h4>
-                <div className="divide-y border rounded-2xl overflow-hidden">
-                  {selectedRecord.selectedItems?.filter(i => i.category === "nurse").map(item => (
-                    <div key={item.id} className="p-3 flex justify-between items-center bg-white">
-                      <div>
-                        <div className="font-bold text-slate-800 text-sm">{item.Common_name}</div>
-                        <div className="text-[0.65rem] text-slate-400 font-bold">{item.quantity} units</div>
-                      </div>
-                      <div className="text-right font-mono text-sm font-black text-slate-700">
-                        {formatCurrency((item[selectedRecord.billingRight] || item["OPD"]) * item.quantity)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            </div>
-
-            <div className="p-6 bg-slate-50 border-t flex justify-between items-center">
-              <div>
-                <div className="text-[0.65rem] font-black text-slate-400 uppercase">Grand Total</div>
-                <div className="text-2xl font-black text-[#0F294D]">{formatCurrency(selectedRecord.totalCourse)}</div>
-              </div>
-              <button onClick={() => setShowModal(false)} className="bg-[#0F294D] text-white px-8 py-3 rounded-xl font-black text-sm hover:bg-slate-800 transition-all shadow-lg">ปิดหน้าต่าง</button>
-            </div>
-          </div>
-        </div>
+        <RecordDetailModal record={selectedRecord} onClose={() => setShowModal(false)} />
       )}
     </div>
   );
