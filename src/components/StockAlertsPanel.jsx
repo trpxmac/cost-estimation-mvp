@@ -1,18 +1,19 @@
-import { AlertTriangle, CheckCircle2, Clock, Truck, Check } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock, Truck, Check, Pill } from 'lucide-react';
 
 /**
- * Inventory stock-alert panel with dynamic coloring and "mark ordered" action.
+ * Inventory demand panel — shows pharma items needed by agreed patients.
+ * Stock data is NOT available from iMed, so we only show demand quantities.
  */
 export default function StockAlertsPanel({ stockAlerts, alertDays, orderedItems, onAlertDaysChange, onMarkOrdered }) {
   const hasActiveAlerts = stockAlerts.some(alert => !orderedItems[alert.code]);
   const hasPendingAlerts = stockAlerts.length > 0 && stockAlerts.every(alert => orderedItems[alert.code]);
-  const isSufficient = stockAlerts.length === 0;
+  const isEmpty = stockAlerts.length === 0;
 
   let panelBorderClass = "border-emerald-200 bg-emerald-50/10";
   let panelAccentClass = "bg-emerald-500";
   if (hasActiveAlerts) {
-    panelBorderClass = "border-rose-200 bg-rose-50/10";
-    panelAccentClass = "bg-rose-500";
+    panelBorderClass = "border-blue-200 bg-blue-50/10";
+    panelAccentClass = "bg-blue-500";
   } else if (hasPendingAlerts) {
     panelBorderClass = "border-amber-200 bg-amber-50/10";
     panelAccentClass = "bg-amber-500";
@@ -25,38 +26,37 @@ export default function StockAlertsPanel({ stockAlerts, alertDays, orderedItems,
       <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-6">
         <div>
           <h2 className="font-black text-slate-900 flex items-center gap-2 text-base">
-            {isSufficient ? (
+            {isEmpty ? (
               <CheckCircle2 size={18} className="text-emerald-600 animate-pulse" />
             ) : hasPendingAlerts ? (
               <Clock size={18} className="text-amber-500 animate-pulse" />
             ) : (
-              <AlertTriangle size={18} className="text-rose-600 animate-pulse" />
+              <Pill size={18} className="text-blue-600 animate-pulse" />
             )}
-            ระบบแจ้งเตือนสต็อกยาและการสั่งซื้อ (Inventory Alerts)
+            สรุปความต้องการยา (Drug Demand Summary)
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            แสดงปริมาณความต้องการของคนไข้ที่ "ตกลงรักษา" เปรียบเทียบสต็อกคงเหลือ เพื่อป้องกันปัญหาของขาดล่วงหน้า
+            แสดงปริมาณยาที่ต้องใช้จากรายการประเมินราคาของคนไข้ที่ "ตกลงรักษา" — กรุณาตรวจสอบสต็อกใน iMed/HIS ก่อนสั่งยา
           </p>
         </div>
-        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl p-1.5 self-start md:self-auto">
-          <span className="text-[0.65rem] font-bold text-slate-500 px-2 uppercase tracking-tighter">เตือนล่วงหน้า:</span>
-          {[3, 5, 7].map(days => (
-            <button
-              key={days}
-              onClick={() => onAlertDaysChange(days)}
-              className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${
-                alertDays === days
-                  ? alertDays === 3
-                    ? 'bg-emerald-600 text-white shadow-sm'
-                    : alertDays === 5
-                      ? 'bg-rose-600 text-white shadow-sm'
-                      : 'bg-rose-700 text-white shadow-sm'
-                  : 'text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              {days} วัน
-            </button>
-          ))}
+        <div className="flex flex-col items-end gap-1.5 self-start md:self-auto">
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl p-1.5">
+            <span className="text-[0.65rem] font-bold text-slate-500 px-2 uppercase tracking-tighter">เตือนล่วงหน้า:</span>
+            {[3, 5, 7].map(days => (
+              <button
+                key={days}
+                onClick={() => onAlertDaysChange(days)}
+                className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${
+                  alertDays === days
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {days} วัน
+              </button>
+            ))}
+          </div>
+          <span className="text-[0.55rem] text-slate-400 font-bold">แจ้งเตือนเตรียมยาล่วงหน้า {alertDays} วัน</span>
         </div>
       </div>
 
@@ -70,7 +70,7 @@ export default function StockAlertsPanel({ stockAlerts, alertDays, orderedItems,
                 className={`border rounded-2xl p-4 flex justify-between items-center transition-all duration-300 ${
                   isOrdered
                     ? 'bg-amber-50/30 border-amber-100 hover:bg-amber-50/50'
-                    : 'bg-rose-50/30 border-rose-100 hover:bg-rose-50/60'
+                    : 'bg-blue-50/30 border-blue-100 hover:bg-blue-50/60'
                 }`}
               >
                 <div className="flex-1 pr-3">
@@ -78,24 +78,21 @@ export default function StockAlertsPanel({ stockAlerts, alertDays, orderedItems,
                   <div className="text-[0.6rem] text-slate-400 font-mono mt-0.5">{alert.code}</div>
                   <div className="flex gap-4 mt-2 text-[0.65rem] font-bold">
                     <span className="text-slate-500">
-                      สต็อก (Supply): <strong className="text-slate-800 font-mono text-sm">{alert.stock}</strong>
-                    </span>
-                    <span className="text-slate-500">
-                      ความต้องการ (Demand): <strong className={`${isOrdered ? 'text-amber-600' : 'text-rose-600'} font-mono text-sm`}>{alert.needed}</strong>
+                      ความต้องการ (Demand): <strong className={`${isOrdered ? 'text-amber-600' : 'text-blue-600'} font-mono text-sm`}>{alert.needed}</strong>
                     </span>
                   </div>
                 </div>
                 <div className="text-right flex flex-col items-end justify-center">
                   {isOrdered ? (
                     <button disabled className="flex items-center gap-1 bg-amber-500 text-white font-black text-[0.65rem] px-3.5 py-2 rounded-full border border-amber-400 shadow-sm shadow-amber-100 cursor-default">
-                      <Check size={12} className="stroke-[3]" /> ✓ สั่งซื้อแล้ว (Pending)
+                      <Check size={12} className="stroke-[3]" /> สั่งยาแล้ว
                     </button>
                   ) : (
                     <button
                       onClick={() => onMarkOrdered(alert.code)}
-                      className="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-[0.65rem] px-3.5 py-2 rounded-full shadow-md shadow-rose-200 hover:shadow-lg transition-all duration-150 active:scale-95"
+                      className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-[0.65rem] px-3.5 py-2 rounded-full shadow-md shadow-blue-200 hover:shadow-lg transition-all duration-150 active:scale-95"
                     >
-                      <Truck size={12} /> สั่งเพิ่ม +{alert.shortage}
+                      <Truck size={12} /> สั่งยา
                     </button>
                   )}
                 </div>
@@ -108,16 +105,10 @@ export default function StockAlertsPanel({ stockAlerts, alertDays, orderedItems,
           <div className="w-14 h-14 bg-emerald-100/80 rounded-full flex items-center justify-center text-emerald-600 mb-3 shadow-sm">
             <CheckCircle2 size={32} className="stroke-[2.5]" />
           </div>
-          <h3 className="text-xs font-black text-emerald-800 uppercase tracking-wider">สต็อกยาเพียงพอ (Empty State)</h3>
+          <h3 className="text-xs font-black text-emerald-800 uppercase tracking-wider">ไม่มีรายการยาที่ต้องสั่ง</h3>
           <p className="text-[0.7rem] text-emerald-600 mt-1 max-w-md mx-auto">
-            ตรวจสอบแล้ว ยาและเวชภัณฑ์ทั้งหมดมีปริมาณเพียงพอสำหรับผู้ป่วยกลุ่ม <strong>"ตกลงรักษา"</strong> ในช่วง <strong>{alertDays} วันข้างหน้า</strong>
+            ไม่พบรายการยาจากผู้ป่วยกลุ่ม <strong>"ตกลงรักษา"</strong> ในช่วง <strong>{alertDays} วันที่ผ่านมา</strong>
           </p>
-          <div className="mt-3 flex gap-2">
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[0.55rem] font-bold bg-emerald-600 text-white shadow-sm gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
-              คลังยา iMed/HIS ปกติ
-            </span>
-          </div>
         </div>
       )}
     </div>

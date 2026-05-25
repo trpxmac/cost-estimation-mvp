@@ -2,6 +2,7 @@ import { Search, Plus } from 'lucide-react';
 
 /**
  * Drug/service search panel with dropdown results.
+ * Nursing service items are already merged into the search pool via getAllMedications().
  */
 export default function SearchPanel({ searchQuery, searchResults, currentRole, getPrice, fmt, onSearchChange, onAddItem, onNavigateAddNew }) {
   return (

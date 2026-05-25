@@ -159,26 +159,45 @@ export default function AddNewItem() {
           <div className="flex flex-col gap-6">
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className={lblCls}>Drug ID / รหัสยา</label>
-                <input className={inputCls} placeholder="e.g. PHA-00123 (ไม่กรอก = auto)" value={drugCode} onChange={e => setDrugCode(e.target.value)} disabled={!!editItem} />
+                <label className={lblCls}>
+                  {drugCat === 'nurse' ? 'Service ID (รหัสบริการ)' : 'Drug ID (รหัสยา)'}
+                </label>
+                <input className={inputCls} placeholder={drugCat === 'nurse' ? 'e.g. NRS-001 (ไม่กรอก = auto)' : 'e.g. PHA-001 (ไม่กรอก = auto)'} value={drugCode} onChange={e => setDrugCode(e.target.value)} disabled={!!editItem} />
               </div>
               <div>
-                <label className={lblCls}>Category / ประเภท</label>
+                <label className={lblCls}>Category (ประเภท)</label>
                 <select className={selCls} value={drugCat} onChange={e => setDrugCat(e.target.value)}>
-                  <option value="pharma">💊 Pharma / ยา</option>
-                  <option value="nurse">🩺 Nurse / ค่าบริการ-เวชภัณฑ์</option>
+                  <option value="pharma">💊 Pharma (ยา)</option>
+                  <option value="nurse">🩺 Nursing Service (ค่าบริการพยาบาล)</option>
                 </select>
               </div>
               <div>
-                <label className={lblCls}>Stock / สต็อกตั้งต้น</label>
+                <label className={lblCls}>Stock (จำนวนตั้งต้น)</label>
                 <input type="number" className={inputCls} placeholder="50" value={drugStock} onChange={e => setDrugStock(e.target.value)} />
               </div>
             </div>
 
             <div className="mt-4 flex justify-between items-center">
               <div className="flex-1 mr-4">
-                <label className={lblCls}>{isSetMode ? "ชื่อชุดรายการ / Item Set Name *" : "ชื่อยา / Drug Name *"}</label>
-                <input className={inputCls} placeholder={isSetMode ? "เช่น ชุดผ่าตัดเล็ก, ชุด Chemo A" : "ชื่อยา (ภาษาไทยหรืออังกฤษ)"} value={drugName} onChange={e => setDrugName(e.target.value)} />
+                <label className={lblCls}>
+                  {isSetMode
+                    ? 'Item Set Name (ชื่อชุดรายการ) *'
+                    : drugCat === 'nurse'
+                      ? 'Service Name (ชื่อบริการ) *'
+                      : 'Drug Name (ชื่อยา) *'}
+                </label>
+                <input
+                  className={inputCls}
+                  placeholder={
+                    isSetMode
+                      ? 'e.g. Minor Surgery Set, Chemo Set A'
+                      : drugCat === 'nurse'
+                        ? 'e.g. Ward Fee (ค่าห้องพัก), Nursing Fee (ค่าพยาบาล)'
+                        : 'e.g. Paracetamol 500mg (พาราเซตามอล)'
+                  }
+                  value={drugName}
+                  onChange={e => setDrugName(e.target.value)}
+                />
               </div>
               {!editItem && (
                 <div className="pt-5">
@@ -200,14 +219,33 @@ export default function AddNewItem() {
               />
             ) : (
               <div className="border-t border-slate-100 pt-6">
-                <h3 className="text-sm font-bold mb-4 text-[#0F294D] flex items-center gap-2">
-                  <div className="w-1 h-4 bg-blue-600 rounded-full"></div> รายละเอียดราคาตามประเภทสิทธิ (Pricing Right)
+                <h3 className="text-sm font-bold mb-5 text-[#0F294D] flex items-center gap-2">
+                  <div className="w-1 h-4 bg-blue-600 rounded-full"></div>
+                  Pricing by Patient Right (ราคาตามสิทธิการรักษา)
                 </h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <PriceInput label="OPD" value={opd} onChange={setOpd} />
-                  <PriceInput label="IPD" value={ipd} onChange={setIpd} />
-                  <PriceInput label="OPDTR" value={opdtr} onChange={setOpdtr} />
-                  <PriceInput label="IPDTR" value={ipdtr} onChange={setIpdtr} />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {/* Thai patients */}
+                  <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-base">🇹🇭</span>
+                      <span className="text-xs font-black text-blue-800 uppercase tracking-wider">Thai (ผู้ป่วยไทย)</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <PriceInput label="OPD (ผู้ป่วยนอก)" value={opd} onChange={setOpd} />
+                      <PriceInput label="IPD (ผู้ป่วยใน)" value={ipd} onChange={setIpd} />
+                    </div>
+                  </div>
+                  {/* Foreign patients */}
+                  <div className="bg-amber-50/60 border border-amber-100 rounded-xl p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-base">🌏</span>
+                      <span className="text-xs font-black text-amber-800 uppercase tracking-wider">Foreign / Inter (ต่างชาติ)</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <PriceInput label="OPD TR (ผู้ป่วยนอก)" value={opdtr} onChange={setOpdtr} />
+                      <PriceInput label="IPD TR (ผู้ป่วยใน)" value={ipdtr} onChange={setIpdtr} />
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

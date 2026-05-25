@@ -37,11 +37,7 @@ export default function CostEstimator() {
   const [courseCycles, setCourseCycles] = useState(1);
   const [insurance, setInsurance] = useState("Self pay");
   const [agreement, setAgreement] = useState("agrees");
-  const [appointmentDate, setAppointmentDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 2);
-    return d.toISOString().split("T")[0];
-  });
+
 
   // --- Role ---
   const [currentRole, setCurrentRole] = useState(() => (user.role === 'nurse' ? 'nurse' : 'pharma'));
@@ -56,6 +52,10 @@ export default function CostEstimator() {
   const [diagnoses, setDiagnoses] = useState([]);
   const [assessors, setAssessors] = useState([]);
 
+  // --- Modal State ---
+  const [showDiagnosisModal, setShowDiagnosisModal] = useState(false);
+  const [newDiagnosisName, setNewDiagnosisName] = useState("");
+
   useEffect(() => {
     getDoctors().then(setDoctors);
     getDiagnoses().then(setDiagnoses);
@@ -67,9 +67,9 @@ export default function CostEstimator() {
     useEstimationCalculator(selectedItems, billingRight, courseCycles);
 
   // --- Form onChange handler for PatientInfoForm ---
-  const formSetterMap = { hn: setHn, vnan: setVnan, patientName: setPatientName, doctorName: setDoctorName, diagnosis: setDiagnosis, assessor: setAssessor, bsa: setBsa, patientType: setPatientType, billingRight: setBillingRight, insurance: setInsurance, agreement: setAgreement, appointmentDate: setAppointmentDate };
+  const formSetterMap = { hn: setHn, vnan: setVnan, patientName: setPatientName, doctorName: setDoctorName, diagnosis: setDiagnosis, assessor: setAssessor, bsa: setBsa, patientType: setPatientType, billingRight: setBillingRight, insurance: setInsurance, agreement: setAgreement };
   const handleFormChange = (field, value) => formSetterMap[field]?.(value);
-  const formValues = { hn, vnan, patientName, patientType, billingRight, insurance, assessor, doctorName, diagnosis, bsa, agreement, appointmentDate };
+  const formValues = { hn, vnan, patientName, patientType, billingRight, insurance, assessor, doctorName, diagnosis, bsa, agreement };
 
   // --- Role switch handler ---
   const handleRoleSwitch = (newRole) => {
@@ -95,11 +95,7 @@ export default function CostEstimator() {
       setCourseCycles(r.courseCycles || 1);
       setInsurance(r.insurance || "Self pay");
       setAgreement(r.agreement || "agrees");
-      setAppointmentDate(r.appointmentDate || (() => {
-        const d = new Date();
-        d.setDate(d.getDate() + 2);
-        return d.toISOString().split("T")[0];
-      })());
+
       setSelectedItems(r.selectedItems || []);
       setEditingId(r.id);
     } else {
@@ -115,11 +111,12 @@ export default function CostEstimator() {
   // --- Search effect ---
   useEffect(() => {
     searchMedications(searchQuery).then(results => {
-      // Filter results based on role, but ALWAYS include Item Sets
+      // Filter results based on role
+      // - pharma: pharma items + item sets
+      // - nurse:  nurse items only (phc01/prep sets belong to pharma)
       setSearchResults(results.filter(i => {
-        if (i.isSet) return true;
-        if (currentRole === "pharma") return i.category === "pharma";
-        return i.category === "nurse" || i.isPreparation;
+        if (currentRole === "pharma") return i.category === "pharma" || (i.isSet && i.category === "pharma");
+        return i.category === "nurse";
       }));
     });
   }, [searchQuery, currentRole]);
@@ -160,14 +157,21 @@ export default function CostEstimator() {
   const removeGroup = (gid) => setSelectedItems(prev => prev.filter(i => i.setInstanceId !== gid));
 
   // --- Inline Diagnosis Add ---
-  const handleAddNewDiagnosis = async () => {
-    const name = window.prompt("ระบุชื่อโรค/Diagnosis ใหม่:");
-    if (name) {
-      await addNewDiagnosis(name);
-      getDiagnoses().then(setDiagnoses);
-      setDiagnosis(name);
-      toast.success("เพิ่มโรคใหม่เรียบร้อย");
+  const handleAddNewDiagnosis = () => {
+    setNewDiagnosisName("");
+    setShowDiagnosisModal(true);
+  };
+
+  const confirmAddDiagnosis = async () => {
+    if (!newDiagnosisName.trim()) {
+      toast.warning("กรุณาระบุชื่อโรค");
+      return;
     }
+    await addNewDiagnosis(newDiagnosisName.trim());
+    getDiagnoses().then(setDiagnoses);
+    setDiagnosis(newDiagnosisName.trim());
+    toast.success("เพิ่มโรคใหม่เรียบร้อย");
+    setShowDiagnosisModal(false);
   };
 
   // --- Save Logic ---
@@ -194,7 +198,7 @@ export default function CostEstimator() {
       const record = {
         id: recordId, savedAt: new Date().toISOString(),
         hn, vnan, patientName, doctorName, diagnosis, assessor, bsa,
-        patientType, billingRight, insurance, agreement, appointmentDate,
+        patientType, billingRight, insurance, agreement,
         prepFeeTotal: prpTotal, courseCycles,
         selectedItems: finalItems,
         pharmaTotal: pTotal, nurseTotal: nTotal, grandTotal: gTotal, totalCourse: gTotal * courseCycles,
@@ -272,10 +276,7 @@ export default function CostEstimator() {
               <div className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400">แพทย์:</span><span className="font-black">{doctorName || "-"}</span></div>
               <div className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400">Diagnosis:</span><span className="font-black">{diagnosis || "-"}</span></div>
               <div className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400">สิทธิการรักษา:</span><span className="font-black">{insurance}</span></div>
-              <div className="flex justify-between border-b border-slate-50 pb-1">
-                <span className="text-slate-400">วันที่นัดหมาย:</span>
-                <span className="font-black text-indigo-700">{appointmentDate ? new Date(appointmentDate).toLocaleDateString('th-TH') : "-"}</span>
-              </div>
+
               <div className="flex justify-between border-b border-slate-50 pb-1">
                 <span className="text-slate-400">การตกลงรักษา:</span>
                 <span className={`font-black ${agreement === "agrees" ? "text-green-600" : "text-red-500"}`}>{agreement === "agrees" ? "ตกลงรักษา" : "ไม่ตกลง"}</span>
@@ -344,6 +345,52 @@ export default function CostEstimator() {
           </div>
         </div>
       </div>
+
+      {/* --- Add New Diagnosis Modal --- */}
+      {showDiagnosisModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-slate-100">
+              <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                <Stethoscope className="text-blue-600" size={20} />
+                ระบุชื่อโรค / Diagnosis ใหม่
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">ชื่อโรคที่เพิ่มใหม่จะถูกบันทึกและสามารถเลือกใช้ได้ทันที</p>
+            </div>
+            <div className="p-6">
+              <label className="block text-xs font-black text-slate-500 mb-2 uppercase tracking-wide">
+                Diagnosis Name <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                className="w-full border-2 border-slate-200 rounded-xl py-3 px-4 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                placeholder="เช่น CA Breast, Lung Cancer"
+                value={newDiagnosisName}
+                onChange={e => setNewDiagnosisName(e.target.value)}
+                autoFocus
+                onKeyDown={e => {
+                  if (e.key === 'Enter') confirmAddDiagnosis();
+                  if (e.key === 'Escape') setShowDiagnosisModal(false);
+                }}
+              />
+            </div>
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+              <button
+                onClick={() => setShowDiagnosisModal(false)}
+                className="px-5 py-2.5 rounded-xl font-bold text-slate-600 hover:bg-slate-200 transition-colors text-sm"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={confirmAddDiagnosis}
+                className="px-6 py-2.5 rounded-xl font-black text-white bg-blue-600 hover:bg-blue-700 active:scale-95 transition-all text-sm shadow-sm"
+              >
+                บันทึกและเลือกใช้
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

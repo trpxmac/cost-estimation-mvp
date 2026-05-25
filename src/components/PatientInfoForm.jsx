@@ -5,7 +5,7 @@ import { UserRound, Plus } from 'lucide-react';
  * Uses a values/onChange pattern to avoid massive individual prop drilling.
  */
 export default function PatientInfoForm({ values, onChange, masterData, lblCls, inputCls, onAddDiagnosis }) {
-  const { hn, vnan, patientName, patientType, billingRight, insurance, assessor, doctorName, diagnosis, bsa, agreement, appointmentDate } = values;
+  const { hn, vnan, patientName, patientType, billingRight, insurance, assessor, doctorName, diagnosis, bsa, agreement } = values;
   const { doctors, diagnoses, assessors } = masterData;
 
   return (
@@ -74,15 +74,11 @@ export default function PatientInfoForm({ values, onChange, masterData, lblCls, 
           </div>
         </div>
 
-        {/* ปรับแก้ 2: เพิ่มการตกลงรักษาและวันที่นัดหมาย */}
-        <div className="grid grid-cols-3 gap-3">
+        {/* ปรับแก้ 2: การตกลงรักษา */}
+        <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={lblCls}>BSA (m²)</label>
             <input type="number" className={inputCls} value={bsa} onChange={e => onChange('bsa', e.target.value)} />
-          </div>
-          <div>
-            <label className={lblCls}>วันที่นัดหมาย</label>
-            <input type="date" className={inputCls} value={appointmentDate} onChange={e => onChange('appointmentDate', e.target.value)} />
           </div>
           <div>
             <label className={lblCls}>ผป. ตกลงรักษาไหม?</label>

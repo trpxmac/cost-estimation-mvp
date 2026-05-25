@@ -8,6 +8,7 @@ import { getAllItems } from './data';
 import {
   getStoredDoctors, getStoredDiagnoses, getStoredAssessors,
 } from './masterData';
+import { ALL_NURSING_SERVICES } from './data/nursingServices';
 
 const API_BASE_URL = 'http://localhost:5000/api';
 
@@ -141,14 +142,24 @@ export async function getAllMedications() {
   const dbCustom = await safeFetch(`${API_BASE_URL}/custom-drugs`, {}, []);
   const staticItems = getAllItems();
 
-  // Merge them by itemCode, custom items overwrite static ones
+  // Start with static pharma items
   const merged = [...staticItems];
+
+  // Merge DB custom items (overwrite static if same itemCode)
   dbCustom.forEach(custom => {
     const idx = merged.findIndex(i => i.itemCode === custom.itemCode);
     if (idx > -1) {
       merged[idx] = custom;
     } else {
       merged.push(custom);
+    }
+  });
+
+  // Merge standard nursing service items (skip if already in DB as custom)
+  const allCodes = new Set(merged.map(i => i.itemCode));
+  ALL_NURSING_SERVICES.forEach(nrs => {
+    if (!allCodes.has(nrs.itemCode)) {
+      merged.push(nrs);
     }
   });
 

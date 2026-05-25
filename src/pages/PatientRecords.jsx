@@ -159,11 +159,7 @@ export default function PatientRecords() {
                   <div>
                     <div className="font-bold text-slate-900 text-sm">{r.patientName || 'ไม่ระบุชื่อ'}</div>
                     <div className="text-xs text-slate-500 mt-0.5">HN: {r.hn || '-'} | {r.doctorName || '-'}</div>
-                    {r.appointmentDate && (
-                      <div className="text-[0.65rem] font-bold text-indigo-600 bg-indigo-50/70 border border-indigo-100 rounded px-1.5 py-0.5 mt-1 inline-block">
-                        📅 นัดหมาย: {new Date(r.appointmentDate).toLocaleDateString('th-TH')}
-                      </div>
-                    )}
+
                     <div className="text-[0.65rem] text-slate-400 mt-1">{formatDate(r.savedAt)}</div>
                   </div>
                   <div className="text-right">
@@ -187,11 +183,7 @@ export default function PatientRecords() {
                   <div>
                     <h3 className="font-black text-lg text-[#0F294D]">{selectedRecord.patientName}</h3>
                     <div className="text-sm text-slate-500">HN: {selectedRecord.hn} • แพทย์: {selectedRecord.doctorName}</div>
-                    {selectedRecord.appointmentDate && (
-                      <div className="text-xs text-indigo-600 font-bold mt-1 bg-indigo-50 border border-indigo-100 px-2.5 py-0.5 rounded inline-block">
-                        📅 นัดหมาย: {new Date(selectedRecord.appointmentDate).toLocaleDateString('th-TH')}
-                      </div>
-                    )}
+
                     <div className="flex gap-2 mt-3">
                       <span className={`text-[0.65rem] px-2.5 py-1 rounded font-black uppercase border ${STATUS_STYLES[selectedRecord.status] || "bg-slate-100 text-slate-500 border-slate-200"}`}>
                         {selectedRecord.status || "รอตรวจสอบ"}

@@ -17,7 +17,7 @@ import DoctorDiagnosisStats from '../components/DoctorDiagnosisStats';
 export default function Dashboard() {
   const navigate = useNavigate();
   const [records, setRecords] = useState([]);
-  const [items, setItems] = useState([]);
+
   const [alertDays, setAlertDays] = useState(() => Number(localStorage.getItem('stock_alert_days') || 5));
   const [orderedItems, setOrderedItems] = useState(() => {
     try { return JSON.parse(localStorage.getItem('ordered_stock_items')) || {}; }
@@ -27,7 +27,6 @@ export default function Dashboard() {
 
   useEffect(() => {
     getEstimations().then(setRecords);
-    import('../data').then(m => setItems(m.getAllItems()));
   }, []);
 
   const handleAlertDaysChange = (days) => {
@@ -47,27 +46,15 @@ export default function Dashboard() {
     const getDaysDiff = (dateStr) => {
       if (!dateStr) return null;
       const today = new Date(); today.setHours(0, 0, 0, 0);
-      const appDate = new Date(dateStr); appDate.setHours(0, 0, 0, 0);
-      return Math.ceil((appDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      const savedDate = new Date(dateStr); savedDate.setHours(0, 0, 0, 0);
+      return Math.ceil((today.getTime() - savedDate.getTime()) / (1000 * 60 * 60 * 24));
     };
 
-    // Mock alerts (MVP presentation fallbacks)
-    const mockAlerts = [];
-    if (alertDays === 5) {
-      mockAlerts.push({ code: '5111160000006', name: 'Pemetrexed INJ (100 mg)', stock: 2, needed: 5, shortage: 3 });
-    } else if (alertDays === 7) {
-      mockAlerts.push(
-        { code: '5111160000006', name: 'Pemetrexed INJ (100 mg)', stock: 2, needed: 7, shortage: 5 },
-        { code: '5111180600005', name: 'CAMPTO 100 MG/5ML INJ.', stock: 10, needed: 12, shortage: 2 },
-        { code: '5120160800002', name: 'Fluquadri 0.5ml', stock: 20, needed: 25, shortage: 5 }
-      );
-    }
-
-    // Dynamic demand calculation
+    // Dynamic demand calculation — show all pharma items needed by agreed patients
     const realItemReq = {};
     records.forEach(r => {
       if (r.agreement !== 'agrees') return;
-      const diffDays = getDaysDiff(r.appointmentDate);
+      const diffDays = getDaysDiff(r.savedAt);
       if (diffDays !== null && !(diffDays >= 0 && diffDays <= alertDays)) return;
 
       (r.selectedItems || []).forEach(item => {
@@ -79,28 +66,8 @@ export default function Dashboard() {
       });
     });
 
-    const realAlerts = Object.keys(realItemReq).reduce((acc, code) => {
-      const req = realItemReq[code];
-      const invItem = items.find(i => i.itemCode === code);
-      const currentStock = invItem?.stock ?? 50;
-      if (req.needed > currentStock) {
-        acc.push({ code: req.code, name: req.name, stock: currentStock, needed: req.needed, shortage: req.needed - currentStock });
-      }
-      return acc;
-    }, []);
-
-    // Merge real + mock, avoid duplicates
-    const combined = [...realAlerts];
-    mockAlerts.forEach(m => {
-      const dupIdx = combined.findIndex(i => i.code === m.code);
-      if (dupIdx > -1) {
-        combined[dupIdx].needed += m.needed;
-        combined[dupIdx].shortage = combined[dupIdx].needed - combined[dupIdx].stock;
-      } else combined.push(m);
-    });
-
-    return combined;
-  }, [records, items, alertDays]);
+    return Object.values(realItemReq).sort((a, b) => b.needed - a.needed);
+  }, [records, alertDays]);
 
   // --- Utility ---
   const formatCurrency = (val) => new Intl.NumberFormat('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(val ?? 0);
