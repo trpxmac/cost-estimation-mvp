@@ -7,6 +7,7 @@
 import { getAllItems } from './data';
 import {
   getStoredDoctors, getStoredDiagnoses, getStoredAssessors,
+  removeDoctor, removeDiagnosis, removeAssessor
 } from './masterData';
 import { ALL_NURSING_SERVICES } from './data/nursingServices';
 
@@ -42,7 +43,12 @@ export async function searchMedications(query) {
 
 export async function getPatientByHN(hn) {
   if (!hn?.trim()) return null;
-  return null;
+  try {
+    const patients = await searchPatients(hn);
+    return patients.find(p => p.patient_id.toLowerCase() === hn.toLowerCase()) || null;
+  } catch (e) {
+    return null;
+  }
 }
 
 export async function saveEstimation(record) {
@@ -125,8 +131,22 @@ export async function updateEstimation(id, record) {
 }
 
 export async function searchPatients(query) {
-  const { default: mockData } = await import('./mockData.json');
-  const patients = mockData.patients;
+  const dbPatients = await safeFetch(`${API_BASE_URL}/patients`, {}, []);
+  let patients = dbPatients;
+
+  // Auto-migrate from mockData if DB is empty
+  if (dbPatients.length === 0) {
+    const { default: mockData } = await import('./mockData.json');
+    patients = mockData.patients;
+    console.log(`Migrating ${patients.length} mock patients to PostgreSQL...`);
+    for (const p of patients) {
+      await safeFetch(`${API_BASE_URL}/patients`, {
+        method: 'POST',
+        body: JSON.stringify(p)
+      });
+    }
+  }
+
   if (!query?.trim()) return patients;
   const q = query.toLowerCase();
   return patients.filter(p =>
@@ -139,46 +159,111 @@ export async function searchPatients(query) {
 }
 
 export async function getAllMedications() {
-  const dbCustom = await safeFetch(`${API_BASE_URL}/custom-drugs`, {}, []);
   const staticItems = getAllItems();
 
-  // Start with static pharma items
-  const merged = [...staticItems];
+  // 1. Fetch all custom drugs from DB
+  const dbCustom = await safeFetch(`${API_BASE_URL}/custom-drugs`, {}, []);
+  
+  // 2. Auto-Migrate local custom_items to DB
+  const localCustom = JSON.parse(localStorage.getItem('custom_items') || '[]');
+  if (localCustom.length > 0) {
+    console.log(`Migrating ${localCustom.length} local custom items to PostgreSQL...`);
+    for (const item of localCustom) {
+      const exists = dbCustom.some(d => d.itemCode === item.itemCode);
+      if (!exists) {
+        await safeFetch(`${API_BASE_URL}/custom-drugs`, {
+          method: 'POST',
+          body: JSON.stringify(item)
+        });
+      }
+    }
+    localStorage.removeItem('custom_items');
+    // Re-fetch after migration
+    const updatedDbCustom = await safeFetch(`${API_BASE_URL}/custom-drugs`, {}, []);
+    dbCustom.length = 0;
+    dbCustom.push(...updatedDbCustom);
+  }
 
-  // Merge DB custom items (overwrite static if same itemCode)
-  dbCustom.forEach(custom => {
-    const idx = merged.findIndex(i => i.itemCode === custom.itemCode);
-    if (idx > -1) {
-      merged[idx] = custom;
-    } else {
-      merged.push(custom);
+  const validDbCustom = dbCustom.filter(d => !d.isDeleted);
+  let merged = [...validDbCustom];
+
+  // 3. Merge static items (skip if in validDbCustom or if the user deleted them)
+  const dbCodes = new Set(dbCustom.map(i => i.itemCode)); // Include deleted in Set so static items don't reappear
+  staticItems.forEach(item => {
+    if (!dbCodes.has(item.itemCode)) {
+      merged.push(item);
     }
   });
 
-  // Merge standard nursing service items (skip if already in DB as custom)
-  const allCodes = new Set(merged.map(i => i.itemCode));
-  ALL_NURSING_SERVICES.forEach(nrs => {
-    if (!allCodes.has(nrs.itemCode)) {
+  // 4. Auto-Migrate standard nursing service items to DB if they don't exist
+  let migratedNurse = false;
+  for (const nrs of ALL_NURSING_SERVICES) {
+    if (!dbCodes.has(nrs.itemCode)) {
+      await safeFetch(`${API_BASE_URL}/custom-drugs`, {
+        method: 'POST',
+        body: JSON.stringify(nrs)
+      });
+      migratedNurse = true;
       merged.push(nrs);
+      dbCodes.add(nrs.itemCode); // Prevent duplicates in memory
     }
-  });
+  }
 
   return merged;
 }
 
 export async function getDoctors() {
   const result = await safeFetch(`${API_BASE_URL}/master-data/doctor`, {}, null);
-  return result || getStoredDoctors();
+  if (result) {
+    const local = JSON.parse(localStorage.getItem('master_doctors') || '[]');
+    if (local.length > 0) {
+      for (const name of local) {
+        if (!result.includes(name)) {
+          await safeFetch(`${API_BASE_URL}/master-data/doctor`, { method: 'POST', body: JSON.stringify({ value: name }) });
+        }
+      }
+      localStorage.removeItem('master_doctors');
+      return await safeFetch(`${API_BASE_URL}/master-data/doctor`, {}, result);
+    }
+    return result;
+  }
+  return getStoredDoctors();
 }
 
 export async function getDiagnoses() {
   const result = await safeFetch(`${API_BASE_URL}/master-data/diagnosis`, {}, null);
-  return result || getStoredDiagnoses();
+  if (result) {
+    const local = JSON.parse(localStorage.getItem('master_diagnoses') || '[]');
+    if (local.length > 0) {
+      for (const name of local) {
+        if (!result.includes(name)) {
+          await safeFetch(`${API_BASE_URL}/master-data/diagnosis`, { method: 'POST', body: JSON.stringify({ value: name }) });
+        }
+      }
+      localStorage.removeItem('master_diagnoses');
+      return await safeFetch(`${API_BASE_URL}/master-data/diagnosis`, {}, result);
+    }
+    return result;
+  }
+  return getStoredDiagnoses();
 }
 
 export async function getAssessors() {
   const result = await safeFetch(`${API_BASE_URL}/master-data/assessor`, {}, null);
-  return result || getStoredAssessors();
+  if (result) {
+    const local = JSON.parse(localStorage.getItem('master_assessors') || '[]');
+    if (local.length > 0) {
+      for (const name of local) {
+        if (!result.includes(name)) {
+          await safeFetch(`${API_BASE_URL}/master-data/assessor`, { method: 'POST', body: JSON.stringify({ value: name }) });
+        }
+      }
+      localStorage.removeItem('master_assessors');
+      return await safeFetch(`${API_BASE_URL}/master-data/assessor`, {}, result);
+    }
+    return result;
+  }
+  return getStoredAssessors();
 }
 
 export async function addNewDoctor(name) {
@@ -220,16 +305,16 @@ export async function addNewAssessor(name) {
 export async function addNewDrug(drugData) {
   const drug = {
     itemCode: drugData.itemCode || `USR-${Date.now()}`,
-    Common_name: drugData.name,
+    Common_name: drugData.Common_name || drugData.name,
     OPD: Number(drugData.OPD) || 0,
     IPD: Number(drugData.IPD) || 0,
     OPDTR: Number(drugData.OPDTR) || 0,
     IPDTR: Number(drugData.IPDTR) || 0,
     category: drugData.category || 'pharma',
-    stock: drugData.stock !== undefined ? Number(drugData.stock) : 50,
+    stock: drugData.stock === null ? null : (drugData.stock !== undefined ? Number(drugData.stock) : 50),
     isSet: !!drugData.isSet,
     items: drugData.items,
-    isPreparation: drugData.category === 'nurse',
+    isPreparation: !!drugData.isPreparation,
     addedAt: new Date().toISOString(),
   };
 
@@ -243,4 +328,69 @@ export async function addNewDrug(drugData) {
   // Fallback
   const { saveCustomDrug } = await import('./data');
   return saveCustomDrug(drug);
+}
+
+export async function deleteDrug(itemCode) {
+  const result = await safeFetch(`${API_BASE_URL}/custom-drugs/${itemCode}`, {
+    method: 'DELETE'
+  }, null);
+
+  if (result) return true;
+
+  // Fallback
+  const { deleteCustomDrug } = await import('./data');
+  if (deleteCustomDrug) {
+    return deleteCustomDrug(itemCode);
+  }
+  return true;
+}
+
+export async function deleteMasterData(type, value) {
+  const result = await safeFetch(`${API_BASE_URL}/master-data/${type}/${encodeURIComponent(value)}`, {
+    method: 'DELETE'
+  }, null);
+
+  if (result) return true;
+
+  // Fallback to local storage
+  if (type === 'doctor') removeDoctor(value);
+  if (type === 'diagnosis') removeDiagnosis(value);
+  if (type === 'assessor') removeAssessor(value);
+  return true;
+}
+
+export async function loginUser(username, password) {
+  const result = await safeFetch(`${API_BASE_URL}/login`, {
+    method: 'POST',
+    body: JSON.stringify({ username, password })
+  });
+  return result; // expected { success: true, user: ... }
+}
+
+export async function getUsers() {
+  const result = await safeFetch(`${API_BASE_URL}/users`, {}, []);
+  return result;
+}
+
+export async function createUser(user) {
+  const result = await safeFetch(`${API_BASE_URL}/users`, {
+    method: 'POST',
+    body: JSON.stringify(user)
+  });
+  return result;
+}
+
+export async function updateUser(id, user) {
+  const result = await safeFetch(`${API_BASE_URL}/users/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(user)
+  });
+  return result;
+}
+
+export async function deleteUser(id) {
+  const result = await safeFetch(`${API_BASE_URL}/users/${id}`, {
+    method: 'DELETE'
+  });
+  return result;
 }

@@ -7,6 +7,9 @@ export const fmt = (v) =>
   new Intl.NumberFormat("th-TH", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(v);
 
 export function getItemPrice(item, billingRight) {
+  if (item.customPrice !== undefined && item.customPrice !== null && item.customPrice !== "") {
+    return Number(item.customPrice);
+  }
   if (item.isSet && item.items) {
     return item.items.reduce((s, i) => s + (i[billingRight] || i["OPD"] || 0), 0);
   }

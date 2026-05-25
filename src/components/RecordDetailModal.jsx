@@ -1,4 +1,5 @@
 import { X, Pill, Stethoscope } from 'lucide-react';
+import { getItemPrice } from '../hooks/useEstimationCalculator';
 
 /**
  * Full-screen modal showing detailed item list of a saved record.
@@ -41,7 +42,7 @@ export default function RecordDetailModal({ record, onClose }) {
                     <div className="text-[0.65rem] text-slate-400 font-bold">{item.quantity} units {item.dose ? `• ${item.dose}` : ''}</div>
                   </div>
                   <div className="text-right font-mono text-sm font-black text-slate-700">
-                    {formatCurrency((item[record.billingRight] || item["OPD"]) * item.quantity)}
+                    {formatCurrency(getItemPrice(item, record.billingRight) * item.quantity)}
                   </div>
                 </div>
               ))}
@@ -64,7 +65,7 @@ export default function RecordDetailModal({ record, onClose }) {
                     <div className="text-[0.65rem] text-slate-400 font-bold">{item.quantity} units</div>
                   </div>
                   <div className="text-right font-mono text-sm font-black text-slate-700">
-                    {formatCurrency((item[record.billingRight] || item["OPD"]) * item.quantity)}
+                    {formatCurrency(getItemPrice(item, record.billingRight) * item.quantity)}
                   </div>
                 </div>
               ))}

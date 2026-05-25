@@ -69,8 +69,14 @@ async function initDatabase() {
         is_set BOOLEAN,
         items JSONB,
         is_preparation BOOLEAN,
-        added_at TIMESTAMP
+        added_at TIMESTAMP,
+        is_deleted BOOLEAN DEFAULT FALSE
       );
+    `);
+
+    // Add is_deleted column if it doesn't exist (migration)
+    await client.query(`
+      ALTER TABLE custom_drugs ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;
     `);
 
     await client.query(`
@@ -79,6 +85,30 @@ async function initDatabase() {
         type VARCHAR(50) NOT NULL,
         value VARCHAR(255) NOT NULL,
         UNIQUE(type, value)
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS patients (
+        patient_id VARCHAR(50) PRIMARY KEY,
+        name_th VARCHAR(255),
+        name_en VARCHAR(255),
+        phone VARCHAR(50),
+        gender VARCHAR(20),
+        age INTEGER,
+        type VARCHAR(50),
+        nationality VARCHAR(50),
+        doctor VARCHAR(255)
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id VARCHAR(50) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        role VARCHAR(50) NOT NULL,
+        avatar VARCHAR(10)
       );
     `);
 
@@ -103,6 +133,19 @@ async function initDatabase() {
       const defaultAssessors = ['ชญานิษฐ์', 'กฤษณะพล', 'ภัทรพร', 'สุพิชญา', 'Dr suwit'];
       for (const ass of defaultAssessors) {
         await client.query("INSERT INTO master_data (type, value) VALUES ('assessor', $1) ON CONFLICT DO NOTHING", [ass]);
+      }
+    }
+
+    const userCheck = await client.query("SELECT COUNT(*) FROM users");
+    if (parseInt(userCheck.rows[0].count) === 0) {
+      console.log('Populating initial users...');
+      const defaultUsers = [
+        { id: 'admin', name: 'Admin User', password: 'password', role: 'admin', avatar: 'A' },
+        { id: 'pharma', name: 'เภสัชกร (Pharmacist)', password: 'password', role: 'pharma', avatar: 'P' },
+        { id: 'nurse', name: 'พยาบาล (Nurse)', password: 'password', role: 'nurse', avatar: 'N' }
+      ];
+      for (const u of defaultUsers) {
+        await client.query("INSERT INTO users (id, name, password, role, avatar) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING", [u.id, u.name, u.password, u.role, u.avatar]);
       }
     }
 
@@ -261,6 +304,7 @@ app.get('/api/custom-drugs', async (req, res) => {
       isSet: r.is_set,
       items: r.items,
       isPreparation: r.is_preparation,
+      isDeleted: r.is_deleted,
       addedAt: r.added_at ? r.added_at.toISOString() : null
     }));
     res.json(mapped);
@@ -290,6 +334,20 @@ app.post('/api/custom-drugs', async (req, res) => {
   }
 });
 
+app.delete('/api/custom-drugs/:itemCode', async (req, res) => {
+  try {
+    const { itemCode } = req.params;
+    await pool.query(`
+      INSERT INTO custom_drugs (item_code, is_deleted, added_at)
+      VALUES ($1, true, $2)
+      ON CONFLICT (item_code) DO UPDATE SET is_deleted = true
+    `, [itemCode, new Date().toISOString()]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Master Data APIs
 app.get('/api/master-data/:type', async (req, res) => {
   try {
@@ -307,6 +365,102 @@ app.post('/api/master-data/:type', async (req, res) => {
     const { value } = req.body;
     await pool.query('INSERT INTO master_data (type, value) VALUES ($1, $2) ON CONFLICT DO NOTHING', [type, value]);
     res.json({ type, value });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/master-data/:type/:value', async (req, res) => {
+  try {
+    const { type, value } = req.params;
+    await pool.query('DELETE FROM master_data WHERE type = $1 AND value = $2', [type, value]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Patients APIs
+app.get('/api/patients', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM patients');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/patients', async (req, res) => {
+  try {
+    const p = req.body;
+    await pool.query(`
+      INSERT INTO patients (patient_id, name_th, name_en, phone, gender, age, type, nationality, doctor)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ON CONFLICT (patient_id) DO NOTHING
+    `, [p.patient_id, p.name_th, p.name_en, p.phone, p.gender, p.age, p.type, p.nationality, p.doctor]);
+    res.json(p);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Users & Auth APIs
+app.post('/api/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const result = await pool.query('SELECT id, name, role, avatar FROM users WHERE id = $1 AND password = $2', [username, password]);
+    if (result.rows.length > 0) {
+      res.json({ success: true, user: result.rows[0] });
+    } else {
+      res.status(401).json({ success: false, error: 'Invalid credentials' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/users', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT id, name, role, avatar FROM users ORDER BY id ASC');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/users', async (req, res) => {
+  try {
+    const { id, name, password, role, avatar } = req.body;
+    await pool.query(
+      'INSERT INTO users (id, name, password, role, avatar) VALUES ($1, $2, $3, $4, $5)',
+      [id, name, password || 'password', role, avatar || id.charAt(0).toUpperCase()]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, role, password, avatar } = req.body;
+    if (password) {
+      await pool.query('UPDATE users SET name=$1, role=$2, password=$3, avatar=$4 WHERE id=$5', [name, role, password, avatar, id]);
+    } else {
+      await pool.query('UPDATE users SET name=$1, role=$2, avatar=$3 WHERE id=$4', [name, role, avatar, id]);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM users WHERE id = $1', [id]);
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -16,7 +16,8 @@ import DoctorDiagnosisStats from '../components/DoctorDiagnosisStats';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [records, setRecords] = useState([]);
+  const [allRecords, setAllRecords] = useState([]);
+  const [selectedMonth, setSelectedMonth] = useState('');
 
   const [alertDays, setAlertDays] = useState(() => Number(localStorage.getItem('stock_alert_days') || 5));
   const [orderedItems, setOrderedItems] = useState(() => {
@@ -24,19 +25,25 @@ export default function Dashboard() {
     catch { return {}; }
   });
   const [selectedDoctorFilter, setSelectedDoctorFilter] = useState(null);
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
 
   useEffect(() => {
-    getEstimations().then(setRecords);
+    getEstimations().then(setAllRecords);
   }, []);
+
+  const records = useMemo(() => {
+    if (!selectedMonth) return allRecords;
+    return allRecords.filter(r => r.savedAt && r.savedAt.startsWith(selectedMonth));
+  }, [allRecords, selectedMonth]);
 
   const handleAlertDaysChange = (days) => {
     setAlertDays(days);
     localStorage.setItem('stock_alert_days', days);
   };
 
-  const handleMarkOrdered = (code) => {
+  const handleMarkOrdered = (code, days) => {
     setOrderedItems(prev => {
-      const next = { ...prev, [code]: true };
+      const next = { ...prev, [code]: days };
       localStorage.setItem('ordered_stock_items', JSON.stringify(next));
       return next;
     });
@@ -125,7 +132,7 @@ export default function Dashboard() {
     return Object.entries(counts).map(([name, value]) => ({
       name, value,
       topDiagnoses: Object.entries(docDiags[name] || {}).map(([dName, dCount]) => ({ name: dName, count: dCount })).sort((a, b) => b.count - a.count).slice(0, 3)
-    })).sort((a, b) => b.value - a.value).slice(0, 5);
+    })).sort((a, b) => b.value - a.value);
   }, [records]);
 
   const diagnosisStats = useMemo(() => {
@@ -134,7 +141,7 @@ export default function Dashboard() {
       const k = r.diagnosis || 'ไม่ระบุ';
       acc[k] = (acc[k] || 0) + 1; return acc;
     }, {});
-    return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 5);
+    return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
   }, [records, selectedDoctorFilter]);
 
   const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899'];
@@ -154,7 +161,14 @@ export default function Dashboard() {
             {new Date().toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 items-center">
+          <input
+            type="month"
+            value={selectedMonth}
+            onChange={e => setSelectedMonth(e.target.value)}
+            className="bg-white/20 text-white placeholder-white/50 border border-white/20 px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:bg-white focus:text-slate-900 transition-all cursor-pointer"
+            title="กรองตามเดือน"
+          />
           <button onClick={() => navigate('/estimator')} className="flex items-center gap-2 bg-white text-[#0F294D] px-4 py-2.5 rounded-lg font-semibold text-sm hover:bg-blue-50 transition-colors">
             <Calculator size={16} /> ประเมินราคาใหม่
           </button>
@@ -183,6 +197,7 @@ export default function Dashboard() {
         orderedItems={orderedItems}
         onAlertDaysChange={handleAlertDaysChange}
         onMarkOrdered={handleMarkOrdered}
+        userRole={user.role}
       />
 
       {/* Donut Charts */}
@@ -275,18 +290,26 @@ export default function Dashboard() {
             <button onClick={() => navigate('/patients')} className="p-2 hover:bg-slate-50 rounded-full text-slate-400"><ChevronRight size={20} /></button>
           </div>
           <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
-            {records.slice(0, 4).map(r => (
-              <div key={r.id} className="p-4 flex justify-between items-center hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => navigate('/patients')}>
+            {records.slice(0, 4).map(r => {
+              const isPendingMe = (user.role === 'nurse' && r.status === 'รอพยาบาล') || (user.role === 'pharma' && r.status === 'รอเภสัช') || (user.role === 'admin' && r.status !== 'สมบูรณ์');
+              return (
+              <div key={r.id} className="p-4 flex justify-between items-center hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => navigate('/estimator', { state: { editRecord: r } })}>
                 <div>
-                  <div className="font-bold text-slate-800 text-sm">{r.patientName || "ไม่ระบุชื่อ"}</div>
+                  <div className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                    {r.patientName || "ไม่ระบุชื่อ"}
+                    {isPendingMe && <span className="bg-amber-100 text-amber-700 text-[0.6rem] px-2 py-0.5 rounded-full font-black animate-pulse">รอดำเนินการ</span>}
+                  </div>
                   <div className="text-[0.65rem] text-slate-400 font-bold">{r.hn} • {r.status}</div>
                 </div>
-                <div className="text-right">
-                  <div className="font-black text-[#0F294D] text-sm">{formatCurrency(r.totalCourse)}</div>
-                  <div className="text-[0.6rem] text-slate-400 font-bold uppercase">{r.patientType}</div>
+                <div className="text-right flex items-center gap-3">
+                  <div>
+                    <div className="font-black text-[#0F294D] text-sm">{formatCurrency(r.totalCourse)}</div>
+                    <div className="text-[0.6rem] text-slate-400 font-bold uppercase">{r.patientType}</div>
+                  </div>
+                  <ChevronRight size={16} className="text-blue-500" />
                 </div>
               </div>
-            ))}
+            )})}
           </div>
         </div>
       </div>

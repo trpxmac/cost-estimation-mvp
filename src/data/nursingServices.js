@@ -20,7 +20,7 @@ export const ALL_NURSING_SERVICES = [
   // -------------------------
   {
     itemCode: 'NRS-ROOM',
-    Common_name: 'Room Fee (ค่าห้องพัก)',
+    Common_name: 'Room / Observe Room (ค่าห้อง / ค่าห้องสังเกตอาการเคมีบำบัด)',
     category: 'nurse',
     OPD: 1000,    // Thai OPD
     IPD: 1500,    // Thai IPD
@@ -29,7 +29,7 @@ export const ALL_NURSING_SERVICES = [
   },
   {
     itemCode: 'NRS-FOOD',
-    Common_name: "Admin's Food (ค่าอาหาร)",
+    Common_name: 'Food (ค่าอาหาร)',
     category: 'nurse',
     OPD: 0,       // OPD ไม่มีค่าอาหาร
     IPD: 800,     // Thai IPD
@@ -42,7 +42,7 @@ export const ALL_NURSING_SERVICES = [
   // -------------------------
   {
     itemCode: 'NRS-NURSING',
-    Common_name: 'Nursing Fee (ค่าบริการพยาบาล)',
+    Common_name: 'Nursing Fee (ค่าบริการพยาบาลเคมีบำบัด)',
     category: 'nurse',
     OPD: 100,     // Thai OPD
     IPD: 1800,    // Thai IPD
@@ -51,7 +51,7 @@ export const ALL_NURSING_SERVICES = [
   },
   {
     itemCode: 'NRS-HOSPITAL',
-    Common_name: 'Hospital Fee (ค่าบริการโรงพยาบาล)',
+    Common_name: 'Hospital Fee (ค่าบริการ รพ.)',
     category: 'nurse',
     OPD: 200,     // Thai OPD
     IPD: 1400,    // Thai IPD
@@ -69,7 +69,7 @@ export const ALL_NURSING_SERVICES = [
     //   Thai OPD:    5,000 (ไม่มี range)
     //   Inter OPD:   max(Expat 5,000, Inter 7,000) = 7,000
     itemCode: 'NRS-SUPPLY',
-    Common_name: 'Medical Supply / Ward Supply (ค่าเวชภัณฑ์)',
+    Common_name: 'Medical Supply (ค่าเวชภัณฑ์ ward)',
     category: 'nurse',
     OPD: 5000,    // Thai OPD
     IPD: 10000,   // Thai IPD max (7,000–10,000)
@@ -83,7 +83,7 @@ export const ALL_NURSING_SERVICES = [
     //   Thai OPD:    3,000
     //   Inter OPD:   max(Expat 3,000, Inter 4,000) = 4,000
     itemCode: 'NRS-LAB',
-    Common_name: 'Lab + X-ray (ค่าตรวจวินิจฉัย)',
+    Common_name: 'Laboratory (ค่าตรวจวินิจฉัย Lab+X-ray)',
     category: 'nurse',
     OPD: 3000,    // Thai OPD
     IPD: 4000,    // Thai IPD max (3,000–4,000)
@@ -96,13 +96,13 @@ export const ALL_NURSING_SERVICES = [
   // -------------------------
   {
     itemCode: 'NRS-PREP',
-    Common_name: 'Preparation Fee (ค่าเตรียมยาเคมีบำบัด)',
+    Common_name: 'Chemotherapy Preparation Fee (ค่าบริการเตรียมยาเคมีบำบัด)',
     category: 'nurse',
     isPreparation: true,
-    OPD: 700,     // Thai OPD
-    IPD: 900,     // Thai IPD
-    OPDTR: 880,   // Inter OPD (max of Expat 700, Inter 880)
-    IPDTR: 1100,  // Inter IPD (max of Expat 900, Inter 1100)
+    OPD: 1500,    // Thai OPD (700 + 800)
+    IPD: 1700,    // Thai IPD (900 + 800)
+    OPDTR: 1630,  // Inter OPD (750 + 880)
+    IPDTR: 1980,  // Inter IPD (1100 + 880)
   },
 
   // -------------------------
@@ -112,12 +112,12 @@ export const ALL_NURSING_SERVICES = [
     // Ward 1 day: Thai 2,400 / Expat 3,000 / Inter 4,000
     // OPD 4-6 hrs: Thai 1,000 / Expat 1,500 / Inter 1,500
     itemCode: 'NRS-DOCTOR',
-    Common_name: 'Doctor Admit / Visit Fee (ค่าแพทย์ตรวจ)',
+    Common_name: 'Doctor Fee (ค่าแพทย์ admit+visit)',
     category: 'nurse',
     OPD: 1000,    // Thai OPD
     IPD: 2400,    // Thai IPD
-    OPDTR: 1500,  // Inter OPD (max of Expat 1,500 / Inter 1,500)
-    IPDTR: 4000,  // Inter IPD (max of Expat 3,000 / Inter 4,000)
+    OPDTR: 2000,  // Inter OPD
+    IPDTR: 4000,  // Inter IPD
   },
   {
     // Ward 1 day: Thai 5,000 / Expat 10,000 / Inter 15,000
@@ -127,7 +127,7 @@ export const ALL_NURSING_SERVICES = [
     category: 'nurse',
     OPD: 5000,    // Thai OPD
     IPD: 5000,    // Thai IPD
-    OPDTR: 10000, // Inter OPD (max of Expat 5,000 / Inter 10,000)
-    IPDTR: 15000, // Inter IPD (max of Expat 10,000 / Inter 15,000)
+    OPDTR: 15000, // Inter OPD
+    IPDTR: 15000, // Inter IPD
   },
 ];

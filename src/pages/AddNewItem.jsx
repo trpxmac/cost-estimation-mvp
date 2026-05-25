@@ -19,7 +19,7 @@ export default function AddNewItem() {
   const [drugCode, setDrugCode] = useState('');
   const [drugName, setDrugName] = useState('');
   const [drugCat, setDrugCat] = useState('pharma');
-  const [drugStock, setDrugStock] = useState('50');
+  const [drugStock, setDrugStock] = useState('');
   
   const [opd, setOpd] = useState('');
   const [ipd, setIpd] = useState('');
@@ -53,7 +53,7 @@ export default function AddNewItem() {
       setIpd(editItem.IPD || '');
       setOpdtr(editItem.OPDTR || '');
       setIpdtr(editItem.IPDTR || '');
-      setDrugStock(editItem.stock !== undefined ? String(editItem.stock) : '50');
+      setDrugStock(editItem.stock !== undefined && editItem.stock !== null ? String(editItem.stock) : '');
       setSetItems(editItem.items || []);
       setIsSetMode(!!editItem.isSet);
     }
@@ -61,9 +61,10 @@ export default function AddNewItem() {
 
   useEffect(() => {
     if (setSearch.length > 1) {
-      import('../data').then(m => {
-        const all = m.getAllItems().filter(i => !i.isSet);
-        setSetResults(all.filter(i => i.Common_name.toLowerCase().includes(setSearch.toLowerCase()) || i.itemCode.includes(setSearch)));
+      import('../api').then(m => {
+        m.getAllMedications().then(all => {
+          setSetResults(all.filter(i => !i.isSet && (i.Common_name.toLowerCase().includes(setSearch.toLowerCase()) || i.itemCode.toLowerCase().includes(setSearch.toLowerCase()))));
+        });
       });
     } else setSetResults([]);
   }, [setSearch]);
@@ -83,7 +84,7 @@ export default function AddNewItem() {
         IPD: ipd,
         OPDTR: opdtr,
         IPDTR: ipdtr,
-        stock: drugStock ? Number(drugStock) : undefined,
+        stock: isSetMode || drugCat === 'nurse' || drugStock.trim() === '' ? null : Number(drugStock),
         isSet: isSetMode,
         items: isSetMode ? setItems : undefined
       };
@@ -171,10 +172,14 @@ export default function AddNewItem() {
                   <option value="nurse">🩺 Nursing Service (ค่าบริการพยาบาล)</option>
                 </select>
               </div>
-              <div>
-                <label className={lblCls}>Stock (จำนวนตั้งต้น)</label>
-                <input type="number" className={inputCls} placeholder="50" value={drugStock} onChange={e => setDrugStock(e.target.value)} />
-              </div>
+              {drugCat !== 'nurse' ? (
+                <div>
+                  <label className={lblCls}>Stock (จำนวนตั้งต้น)</label>
+                  <input type="number" className={inputCls} placeholder="ไม่ระบุ" value={drugStock} onChange={e => setDrugStock(e.target.value)} />
+                </div>
+              ) : (
+                <div></div>
+              )}
             </div>
 
             <div className="mt-4 flex justify-between items-center">

@@ -1,10 +1,13 @@
+import { useState } from 'react';
 import { AlertTriangle, CheckCircle2, Clock, Truck, Check, Pill } from 'lucide-react';
 
 /**
  * Inventory demand panel — shows pharma items needed by agreed patients.
  * Stock data is NOT available from iMed, so we only show demand quantities.
  */
-export default function StockAlertsPanel({ stockAlerts, alertDays, orderedItems, onAlertDaysChange, onMarkOrdered }) {
+export default function StockAlertsPanel({ stockAlerts, alertDays, orderedItems, onAlertDaysChange, onMarkOrdered, userRole }) {
+  const [activeOrderCode, setActiveOrderCode] = useState(null);
+  const canOrder = userRole === 'pharma' || userRole === 'admin';
   const hasActiveAlerts = stockAlerts.some(alert => !orderedItems[alert.code]);
   const hasPendingAlerts = stockAlerts.length > 0 && stockAlerts.every(alert => orderedItems[alert.code]);
   const isEmpty = stockAlerts.length === 0;
@@ -85,15 +88,33 @@ export default function StockAlertsPanel({ stockAlerts, alertDays, orderedItems,
                 <div className="text-right flex flex-col items-end justify-center">
                   {isOrdered ? (
                     <button disabled className="flex items-center gap-1 bg-amber-500 text-white font-black text-[0.65rem] px-3.5 py-2 rounded-full border border-amber-400 shadow-sm shadow-amber-100 cursor-default">
-                      <Check size={12} className="stroke-[3]" /> สั่งยาแล้ว
+                      <Check size={12} className="stroke-[3]" /> สั่งยาแล้ว ({orderedItems[alert.code]} วัน)
                     </button>
+                  ) : canOrder ? (
+                    activeOrderCode === alert.code ? (
+                      <div className="flex gap-1 animate-in slide-in-from-right-4 duration-200">
+                        {[3, 5, 7].map(days => (
+                          <button
+                            key={days}
+                            onClick={() => { onMarkOrdered(alert.code, days); setActiveOrderCode(null); }}
+                            className="bg-blue-100 hover:bg-blue-600 hover:text-white text-blue-700 font-bold text-[0.65rem] px-2 py-1.5 rounded-md transition-colors"
+                          >
+                            {days} วัน
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setActiveOrderCode(alert.code)}
+                        className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-[0.65rem] px-3.5 py-2 rounded-full shadow-md shadow-blue-200 hover:shadow-lg transition-all duration-150 active:scale-95"
+                      >
+                        <Truck size={12} /> สั่งยา
+                      </button>
+                    )
                   ) : (
-                    <button
-                      onClick={() => onMarkOrdered(alert.code)}
-                      className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-[0.65rem] px-3.5 py-2 rounded-full shadow-md shadow-blue-200 hover:shadow-lg transition-all duration-150 active:scale-95"
-                    >
-                      <Truck size={12} /> สั่งยา
-                    </button>
+                    <span className="text-[0.65rem] font-bold text-slate-400 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200">
+                      รอเภสัชกรสั่งยา
+                    </span>
                   )}
                 </div>
               </div>

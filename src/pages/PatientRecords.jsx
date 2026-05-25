@@ -1,15 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getEstimations, deleteEstimation } from '../api';
-import mockData from '../mockData.json';
+import { getEstimations, deleteEstimation, searchPatients } from '../api';
 import { useToast } from '../components/Toast';
 import RecordDetailModal from '../components/RecordDetailModal';
 import {
   Search, Calculator, ClipboardList, Trash2,
   FileText, User, Pencil, Pill, Stethoscope, ClipboardCheck
 } from 'lucide-react';
-
-const mockPatients = mockData.patients;
 
 const STATUS_STYLES = {
   "สมบูรณ์": "bg-green-100 text-green-700 border-green-200",
@@ -21,24 +18,36 @@ export default function PatientRecords() {
   const navigate = useNavigate();
   const toast = useToast();
 
-  const [savedRecords, setSavedRecords] = useState([]);
+  const [allSavedRecords, setAllSavedRecords] = useState([]);
+  const [allPatients, setAllPatients] = useState([]);
+  const [selectedMonth, setSelectedMonth] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('patients');
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState(null);
 
   useEffect(() => {
     getEstimations()
-      .then(setSavedRecords)
-      .catch(() => toast.error('โหลดข้อมูลไม่สำเร็จ'));
+      .then(setAllSavedRecords)
+      .catch(() => toast.error('โหลดข้อมูลการประเมินไม่สำเร็จ'));
+      
+    searchPatients('')
+      .then(setAllPatients)
+      .catch(() => toast.error('โหลดรายชื่อผู้ป่วยไม่สำเร็จ'));
   }, []);
 
-  const filteredPatients = mockPatients.filter(p => {
+  const savedRecords = useMemo(() => {
+    if (!selectedMonth) return allSavedRecords;
+    return allSavedRecords.filter(r => r.savedAt && r.savedAt.startsWith(selectedMonth));
+  }, [allSavedRecords, selectedMonth]);
+
+  const filteredPatients = allPatients.filter(p => {
     const q = searchTerm.toLowerCase();
     return (
-      p.patient_id.toLowerCase().includes(q) ||
-      p.name_en.toLowerCase().includes(q) ||
-      p.name_th.includes(searchTerm) ||
+      p.patient_id?.toLowerCase().includes(q) ||
+      p.name_en?.toLowerCase().includes(q) ||
+      p.name_th?.includes(searchTerm) ||
       p.phone?.toLowerCase().includes(q)
     );
   });
@@ -52,17 +61,24 @@ export default function PatientRecords() {
     );
   });
 
-  const deleteRecord = async (id) => {
-    const record = savedRecords.find(r => r.id === id);
-    if (!confirm(`ลบบันทึกของ "${record?.patientName || 'ไม่ระบุชื่อ'}"?`)) return;
-    try {
-      await deleteEstimation(id);
-      setSavedRecords(prev => prev.filter(r => r.id !== id));
-      if (selectedRecord?.id === id) setSelectedRecord(null);
-      toast.success('ลบสำเร็จ');
-    } catch {
-      toast.error('ลบไม่สำเร็จ');
-    }
+  const deleteRecord = (id) => {
+    const record = allSavedRecords.find(r => r.id === id);
+    setConfirmDialog({
+      isOpen: true,
+      title: 'ยืนยันการลบบันทึก',
+      message: `คุณต้องการลบบันทึกของ "${record?.patientName || 'ไม่ระบุชื่อ'}" ใช่หรือไม่?`,
+      onConfirm: async () => {
+        try {
+          await deleteEstimation(id);
+          setAllSavedRecords(prev => prev.filter(r => r.id !== id));
+          if (selectedRecord?.id === id) setSelectedRecord(null);
+          toast.success('ลบสำเร็จ');
+        } catch {
+          toast.error('ลบไม่สำเร็จ');
+        }
+        setConfirmDialog(null);
+      }
+    });
   };
 
   const formatCurrency = (val) =>
@@ -106,6 +122,15 @@ export default function PatientRecords() {
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'history' ? 'bg-[#0F294D] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
             <ClipboardList size={15} /> ประวัติการประเมิน
           </button>
+          {activeTab === 'history' && (
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={e => setSelectedMonth(e.target.value)}
+              className="bg-white border border-slate-200 rounded-lg px-3 text-sm text-slate-700 focus:outline-none focus:border-blue-500 cursor-pointer ml-2"
+              title="กรองตามเดือน"
+            />
+          )}
         </div>
       </div>
 
@@ -128,7 +153,7 @@ export default function PatientRecords() {
                     <td className="p-4 font-mono text-slate-500">{p.patient_id}</td>
                     <td className="p-4">
                       <div className="font-bold text-slate-900">{p.name_th || p.name_en}</div>
-                      <div className="text-xs text-slate-400">{p.gender}, {p.age} ปี</div>
+                      <div className="text-xs text-slate-400">{p.gender}, {p.age} ปี • โทร: {p.phone || '-'}</div>
                     </td>
                     <td className="p-4">
                       <span className={`px-2.5 py-1 rounded-full text-[0.7rem] font-black uppercase ${p.nationality === 'THAI' ? 'bg-sky-100 text-sky-700' : 'bg-amber-100 text-amber-700'}`}>
@@ -191,8 +216,7 @@ export default function PatientRecords() {
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => navigate('/estimator', { state: { editRecord: selectedRecord } })} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-100"><Pencil size={18} /></button>
-                    <button onClick={() => deleteRecord(selectedRecord.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg border border-red-100"><Trash2 size={18} /></button>
+                    <button onClick={() => deleteRecord(selectedRecord.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg border border-red-100" title="ลบรายการนี้"><Trash2 size={18} /></button>
                   </div>
                 </div>
 
@@ -225,8 +249,8 @@ export default function PatientRecords() {
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-slate-500 shadow-sm"><ClipboardCheck size={20} /></div>
                         <div>
-                          <div className="text-[0.6rem] font-black text-slate-400 uppercase tracking-tighter">ค่าเวชภัณฑ์และค่าเตรียมยา</div>
-                          <div className="text-xs font-bold text-slate-700">{selectedRecord.prepFeeQty} ครั้ง</div>
+                          <div className="text-[0.6rem] font-black text-slate-400 uppercase tracking-tighter">ค่าตู้ + เวชภัณฑ์ + ค่าเตรียมยา</div>
+                          <div className="text-xs font-bold text-slate-700">คำนวณอัตโนมัติ</div>
                         </div>
                       </div>
                       <div className="text-sm font-black text-slate-700">{formatCurrency(selectedRecord.prepFeeTotal)}</div>
@@ -241,10 +265,27 @@ export default function PatientRecords() {
                   </button>
                 </div>
 
-                <div className="bg-[#FFD700] p-4 rounded-xl flex justify-between items-center font-black">
+                <div className="bg-[#FFD700] p-4 rounded-xl flex justify-between items-center font-black mb-4">
                   <span>ยอดรวมทั้งสิ้น</span>
                   <span className="text-xl">{formatCurrency(selectedRecord.totalCourse)}</span>
                 </div>
+
+                <button 
+                  onClick={() => navigate('/estimator', { state: { editRecord: selectedRecord } })} 
+                  className={`w-full text-white py-3.5 rounded-xl font-black text-sm transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 ${selectedRecord.status === 'สมบูรณ์' ? 'bg-[#0F294D] hover:bg-slate-800' : 'bg-blue-600 hover:bg-blue-700'}`}
+                >
+                  {selectedRecord.status === 'สมบูรณ์' ? (
+                    <>
+                      <FileText size={18} />
+                      พิมพ์และแสดงใบประมาณการค่าใช้จ่าย
+                    </>
+                  ) : (
+                    <>
+                      <Pencil size={18} />
+                      ดำเนินการประเมินต่อ (Edit Estimation)
+                    </>
+                  )}
+                </button>
               </div>
             ) : (
               <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl h-full flex flex-col items-center justify-center text-slate-400 p-12">
@@ -259,6 +300,27 @@ export default function PatientRecords() {
       {/* Detail Modal */}
       {showModal && selectedRecord && (
         <RecordDetailModal record={selectedRecord} onClose={() => setShowModal(false)} />
+      )}
+
+      {/* Confirm Modal */}
+      {confirmDialog?.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl flex flex-col items-center text-center">
+            <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mb-4">
+              <Trash2 size={32} />
+            </div>
+            <h3 className="text-xl font-black text-slate-800 mb-2">{confirmDialog.title}</h3>
+            <p className="text-sm text-slate-500 font-bold mb-6">{confirmDialog.message}</p>
+            <div className="flex gap-3 w-full">
+              <button onClick={() => setConfirmDialog(null)} className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl font-black text-sm hover:bg-slate-200 transition-colors">
+                ยกเลิก
+              </button>
+              <button onClick={confirmDialog.onConfirm} className="flex-1 bg-red-500 text-white py-3 rounded-xl font-black text-sm hover:bg-red-600 transition-colors shadow-lg shadow-red-500/30">
+                ยืนยันการลบ
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

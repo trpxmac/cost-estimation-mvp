@@ -10,17 +10,20 @@ const DEFAULT_ASSESSORS = ['ชญานิษฐ์', 'กฤษณะพล', 
 
 export function getStoredDoctors() {
   const custom = JSON.parse(localStorage.getItem('master_doctors') || '[]');
-  return [...DEFAULT_DOCTORS, ...custom];
+  const deleted = JSON.parse(localStorage.getItem('deleted_doctors') || '[]');
+  return [...DEFAULT_DOCTORS.filter(d => !deleted.includes(d)), ...custom];
 }
 
 export function getStoredDiagnoses() {
   const custom = JSON.parse(localStorage.getItem('master_diagnoses') || '[]');
-  return [...DEFAULT_DIAGNOSES, ...custom];
+  const deleted = JSON.parse(localStorage.getItem('deleted_diagnoses') || '[]');
+  return [...DEFAULT_DIAGNOSES.filter(d => !deleted.includes(d)), ...custom];
 }
 
 export function getStoredAssessors() {
   const custom = JSON.parse(localStorage.getItem('master_assessors') || '[]');
-  return [...DEFAULT_ASSESSORS, ...custom];
+  const deleted = JSON.parse(localStorage.getItem('deleted_assessors') || '[]');
+  return [...DEFAULT_ASSESSORS.filter(d => !deleted.includes(d)), ...custom];
 }
 
 export function addDoctor(name) {
@@ -42,4 +45,34 @@ export function addAssessor(name) {
   custom.push(name);
   localStorage.setItem('master_assessors', JSON.stringify(custom));
   return name;
+}
+
+export function removeDoctor(name) {
+  let custom = JSON.parse(localStorage.getItem('master_doctors') || '[]');
+  localStorage.setItem('master_doctors', JSON.stringify(custom.filter(n => n !== name)));
+  let deleted = JSON.parse(localStorage.getItem('deleted_doctors') || '[]');
+  if (DEFAULT_DOCTORS.includes(name) && !deleted.includes(name)) {
+    deleted.push(name);
+    localStorage.setItem('deleted_doctors', JSON.stringify(deleted));
+  }
+}
+
+export function removeDiagnosis(name) {
+  let custom = JSON.parse(localStorage.getItem('master_diagnoses') || '[]');
+  localStorage.setItem('master_diagnoses', JSON.stringify(custom.filter(n => n !== name)));
+  let deleted = JSON.parse(localStorage.getItem('deleted_diagnoses') || '[]');
+  if (DEFAULT_DIAGNOSES.includes(name) && !deleted.includes(name)) {
+    deleted.push(name);
+    localStorage.setItem('deleted_diagnoses', JSON.stringify(deleted));
+  }
+}
+
+export function removeAssessor(name) {
+  let custom = JSON.parse(localStorage.getItem('master_assessors') || '[]');
+  localStorage.setItem('master_assessors', JSON.stringify(custom.filter(n => n !== name)));
+  let deleted = JSON.parse(localStorage.getItem('deleted_assessors') || '[]');
+  if (DEFAULT_ASSESSORS.includes(name) && !deleted.includes(name)) {
+    deleted.push(name);
+    localStorage.setItem('deleted_assessors', JSON.stringify(deleted));
+  }
 }

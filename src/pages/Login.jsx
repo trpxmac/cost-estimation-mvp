@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Lock, User, Eye, EyeOff, Activity, Stethoscope } from 'lucide-react';
 import { useToast } from '../components/Toast';
 
+import { loginUser } from '../api';
+
 export default function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -18,26 +20,22 @@ export default function Login() {
       return;
     }
 
-    // Simulate API call
-    setTimeout(() => {
-      const accounts = {
-        'admin': { name: 'Admin User', role: 'admin', avatar: 'A' },
-        'pharma': { name: 'เภสัชกร (Pharmacist)', role: 'pharma', avatar: 'P' },
-        'nurse': { name: 'พยาบาล (Nurse)', role: 'nurse', avatar: 'N' }
-      };
-
-      const user = accounts[username.toLowerCase()];
-
-      if (user && password === '1234') {
+    setLoading(true);
+    try {
+      const res = await loginUser(username, password);
+      if (res && res.success) {
         localStorage.setItem('isAuthenticated', 'true');
-        localStorage.setItem('user', JSON.stringify(user));
-        toast.success('เข้าสู่ระบบสำเร็จ', `ยินดีต้อนรับคุณ ${user.name}`);
+        localStorage.setItem('user', JSON.stringify(res.user));
+        toast.success('เข้าสู่ระบบสำเร็จ', `ยินดีต้อนรับคุณ ${res.user.name}`);
         navigate('/dashboard');
       } else {
         toast.error('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง', 'กรุณาตรวจสอบข้อมูลอีกครั้ง');
       }
+    } catch (err) {
+      toast.error('เกิดข้อผิดพลาดในการเชื่อมต่อ', 'ไม่สามารถเข้าสู่ระบบได้ในขณะนี้');
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -122,7 +120,7 @@ export default function Login() {
           
           <div className="p-6 bg-slate-50/50 border-t border-slate-100 text-center">
             <p className="text-[0.7rem] text-slate-400 font-medium tracking-wide">
-              © 2024 BANGKOK HOSPITAL SIRIROJ. ALL RIGHTS RESERVED.
+              &copy; {new Date().getFullYear()} BANGKOK HOSPITAL SIRIROJ. ALL RIGHTS RESERVED.
             </p>
           </div>
         </div>

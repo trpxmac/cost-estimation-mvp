@@ -1,4 +1,6 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { getEstimations } from '../api';
 import {
   Calculator,
   LayoutDashboard,
@@ -19,12 +21,35 @@ export default function Layout() {
   const storedUser = localStorage.getItem('user');
   const user = storedUser ? JSON.parse(storedUser) : { "name": "Guest", "avatar": "G", "role": "none" };
   const isAdmin = user.role === 'admin';
+  const isPharma = user.role === 'pharma';
+  const isNurse = user.role === 'nurse';
+
+  const [lang, setLang] = useState(() => localStorage.getItem('lang') || 'EN');
+  const [showNotif, setShowNotif] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+
+  useEffect(() => {
+    localStorage.setItem('lang', lang);
+  }, [lang]);
+
+  useEffect(() => {
+    getEstimations().then(data => {
+      let pending = [];
+      if (isPharma) pending = data.filter(r => r.status === 'รอเภสัช');
+      if (isNurse) pending = data.filter(r => r.status === 'รอพยาบาล');
+      if (isAdmin) pending = data.filter(r => r.status !== 'สมบูรณ์');
+      
+      setNotifications(pending);
+    }).catch(console.error);
+  }, [isPharma, isNurse, isAdmin]);
+
+  const t = (th, en) => lang === 'TH' ? th : en;
 
   const navItems = [
-    { path: '/dashboard', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
-    { path: '/estimator', icon: <Calculator size={20} />, label: 'Cost Estimator' },
-    { path: '/patients', icon: <Users size={20} />, label: 'Patient Records' },
-    ...(isAdmin ? [{ path: '/drug-prices', icon: <DollarSign size={20} />, label: 'Drug Prices' }] : []),
+    ...(isAdmin || isPharma || isNurse ? [{ path: '/dashboard', icon: <LayoutDashboard size={20} />, label: t('ภาพรวม', 'Dashboard') }] : []),
+    { path: '/estimator', icon: <Calculator size={20} />, label: t('ประเมินราคา', 'Cost Estimator') },
+    { path: '/patients', icon: <Users size={20} />, label: t('ทะเบียนผู้ป่วย', 'Patient Records') },
+    ...(isAdmin || isPharma || isNurse ? [{ path: '/drug-prices', icon: <DollarSign size={20} />, label: t('ราคายา', 'Drug Prices') }] : []),
   ];
 
   const handleSignOut = () => {
@@ -40,11 +65,12 @@ export default function Layout() {
     return false;
   };
   const getPageTitle = () => {
-    if (location.pathname === '/dashboard') return 'Dashboard / ภาพรวม';
-    if (location.pathname === '/' || location.pathname === '/estimator') return 'Cost Estimator / ประเมินราคา';
-    if (location.pathname === '/add-item') return 'Add New Item / เพิ่มรายการใหม่';
-    if (location.pathname === '/patients') return 'Patient Records / ทะเบียนผู้ป่วย';
-    if (location.pathname === '/drug-prices') return 'Drug Prices / ราคายา';
+    if (location.pathname === '/dashboard') return t('Dashboard / ภาพรวม', 'Dashboard Overview');
+    if (location.pathname === '/' || location.pathname === '/estimator') return t('Cost Estimator / ประเมินราคา', 'Cost Estimator');
+    if (location.pathname === '/add-item') return t('Add New Item / เพิ่มรายการใหม่', 'Add New Item');
+    if (location.pathname === '/patients') return t('Patient Records / ทะเบียนผู้ป่วย', 'Patient Records');
+    if (location.pathname === '/drug-prices') return t('Drug Prices / ราคายา', 'Drug Prices');
+    if (location.pathname === '/settings') return t('Settings / ตั้งค่าระบบ', 'System Settings');
     return '';
   };
 
@@ -72,14 +98,14 @@ export default function Layout() {
         </nav>
         <div className="p-4 border-t border-white/10 bg-black/10">
           {isAdmin && (
-            <button className="w-full flex items-center gap-3 py-3 px-4 text-blue-100/60 rounded-xl mb-2 font-bold transition-all hover:bg-white/10 hover:text-white">
+            <Link to="/settings" className={`w-full flex items-center gap-3 py-3 px-4 rounded-xl mb-2 font-bold transition-all ${isActive('/settings') ? 'bg-white text-[#0F294D]' : 'text-blue-100/60 hover:bg-white/10 hover:text-white'}`}>
               <Settings size={20} />
-              Settings
-            </button>
+              {t('ตั้งค่า', 'Settings')}
+            </Link>
           )}
           <button onClick={handleSignOut} className="w-full flex items-center gap-3 py-3 px-4 text-red-400 rounded-xl font-bold transition-all hover:bg-red-500 hover:text-white">
             <LogOut size={20} />
-            Sign Out
+            {t('ออกจากระบบ', 'Sign Out')}
           </button>
         </div>
       </aside>
@@ -90,10 +116,47 @@ export default function Layout() {
         <header className="h-[70px] bg-white border-b border-slate-200 flex justify-between items-center px-8 shadow-sm z-10">
           <div className="text-lg font-black text-[#0F294D] tracking-tight">{getPageTitle()}</div>
           <div className="flex items-center gap-6 text-slate-500">
-            <span className="text-xs font-bold flex items-center gap-1 cursor-pointer hover:text-slate-900 transition-colors uppercase tracking-widest">
-              <Globe size={14} /> TH | EN
+            <span 
+              onClick={() => setLang(l => l === 'TH' ? 'EN' : 'TH')}
+              className="text-xs font-bold flex items-center gap-1 cursor-pointer hover:text-slate-900 transition-colors uppercase tracking-widest select-none"
+            >
+              <Globe size={14} /> 
+              <span className={lang === 'TH' ? 'text-[#0F294D]' : 'text-slate-300'}>TH</span> | 
+              <span className={lang === 'EN' ? 'text-[#0F294D]' : 'text-slate-300'}>EN</span>
             </span>
-            <Bell size={20} className="cursor-pointer hover:text-slate-900 transition-colors" />
+            
+            <div className="relative">
+              <Bell 
+                size={20} 
+                className="cursor-pointer hover:text-slate-900 transition-colors" 
+                onClick={() => setShowNotif(!showNotif)}
+              />
+              {notifications.length > 0 && (
+                <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[0.55rem] font-black text-white flex items-center justify-center border-2 border-white pointer-events-none">
+                  {notifications.length}
+                </div>
+              )}
+
+              {showNotif && (
+                <div className="absolute top-full right-[-50px] mt-4 w-72 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 overflow-hidden">
+                  <div className="p-3 border-b border-slate-100 bg-slate-50">
+                    <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest">{t('การแจ้งเตือน', 'Notifications')}</h3>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-slate-400 font-bold">{t('ไม่มีการแจ้งเตือนใหม่', 'No new notifications')}</div>
+                    ) : (
+                      notifications.map(n => (
+                        <div key={n.id} onClick={() => { setShowNotif(false); navigate('/estimator', { state: { editRecord: n } }); }} className="p-3 border-b border-slate-50 hover:bg-blue-50 cursor-pointer transition-colors text-left">
+                          <div className="text-xs font-bold text-slate-800">{n.patientName}</div>
+                          <div className="text-[0.65rem] text-slate-500 mt-0.5">HN: {n.hn} • {n.status}</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="flex items-center gap-3 ml-4 bg-slate-50 py-1.5 pl-1.5 pr-4 rounded-full border border-slate-100 group relative">
               <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-black text-sm shadow-md shadow-indigo-100">
                 {user.avatar}

@@ -1,13 +1,7 @@
 // src/data.js
 // This file manages the medication and item data, including custom additions.
 
-const INITIAL_ITEMS = [
-  { itemCode: '5111160000006', Common_name: 'Pemetrexed INJ (100 mg)', OPD: 3000, IPD: 4200, OPDTR: 3300, IPDTR: 5040, category: 'pharma', stock: 2 },
-  { itemCode: '5111180600005', Common_name: 'CAMPTO 100 MG/5ML INJ.', OPD: 18000, IPD: 18000, OPDTR: 18000, IPDTR: 18000, category: 'pharma', stock: 10 },
-  { itemCode: 'PACset', Common_name: 'Paclitaxel set', OPD: 1020, IPD: 1020, OPDTR: 1020, IPDTR: 1020, category: 'pharma', stock: 5 },
-  { itemCode: '5120160800002', Common_name: 'Fluquadri 0.5ml', OPD: 596, IPD: 775, OPDTR: 656, IPDTR: 930, category: 'pharma', stock: 20 },
-  { itemCode: 'DRUG001', Common_name: 'Paracetamol 500mg', OPD: 10, IPD: 12, OPDTR: 10, IPDTR: 12, category: 'pharma', stock: 50 },
-];
+const INITIAL_ITEMS = [];
 
 const INITIAL_SETS = [
   {

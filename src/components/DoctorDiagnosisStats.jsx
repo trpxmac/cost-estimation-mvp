@@ -11,11 +11,11 @@ export default function DoctorDiagnosisStats({ doctorStats, diagnosisStats, sele
       <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
         <div className="flex justify-between items-center mb-6">
           <h2 className="font-black text-slate-900 flex items-center gap-2">
-            <UserRound size={18} className="text-indigo-600" /> สถิติแพทย์ (Top 5)
+            <UserRound size={18} className="text-indigo-600" /> สถิติแพทย์ (ทั้งหมด)
           </h2>
           <span className="text-[0.65rem] font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded border">คลิกเพื่อกรอง</span>
         </div>
-        <div className="space-y-4">
+        <div className="space-y-4 max-h-[320px] overflow-y-auto pr-2">
           {doctorStats.length > 0 ? doctorStats.map((item, i) => {
             const isSelected = selectedDoctorFilter === item.name;
             return (
@@ -63,7 +63,7 @@ export default function DoctorDiagnosisStats({ doctorStats, diagnosisStats, sele
         <div className="flex justify-between items-center mb-6">
           <h2 className="font-black text-slate-900 flex items-center gap-2 text-sm md:text-base">
             <Stethoscope size={18} className="text-blue-600" />
-            <span>การวินิจฉัย {selectedDoctorFilter ? `ของ ${selectedDoctorFilter}` : '(Top 5)'}</span>
+            <span>การวินิจฉัย {selectedDoctorFilter ? `ของ ${selectedDoctorFilter}` : '(ทั้งหมด)'}</span>
           </h2>
           {selectedDoctorFilter && (
             <button
@@ -74,7 +74,7 @@ export default function DoctorDiagnosisStats({ doctorStats, diagnosisStats, sele
             </button>
           )}
         </div>
-        <div className="space-y-4">
+        <div className="space-y-4 max-h-[320px] overflow-y-auto pr-2">
           {diagnosisStats.length > 0 ? diagnosisStats.map((item, i) => (
             <div key={i} className="relative pt-1">
               <div className="flex items-center justify-between mb-1">

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { searchMedications, saveEstimation, updateEstimation, getEstimationById, getDoctors, getDiagnoses, getAssessors, addNewDiagnosis } from "../api";
+import { searchMedications, saveEstimation, updateEstimation, getEstimationById, getDoctors, getDiagnoses, getAssessors, addNewDiagnosis, getPatientByHN } from "../api";
 import { useToast } from "../components/Toast";
 import { Pill, Stethoscope } from "lucide-react";
 
@@ -41,6 +41,7 @@ export default function CostEstimator() {
 
   // --- Role ---
   const [currentRole, setCurrentRole] = useState(() => (user.role === 'nurse' ? 'nurse' : 'pharma'));
+  const [isViewMode, setIsViewMode] = useState(false);
 
   // --- Search & Items ---
   const [searchQuery, setSearchQuery] = useState("");
@@ -61,6 +62,27 @@ export default function CostEstimator() {
     getDiagnoses().then(setDiagnoses);
     getAssessors().then(setAssessors);
   }, []);
+
+  // --- Auto-fetch Patient by HN ---
+  useEffect(() => {
+    if (!hn.trim() || editingId) return;
+    const timer = setTimeout(async () => {
+      const p = await getPatientByHN(hn.trim());
+      if (p) {
+        setPatientName(p.name_th || p.name_en || "");
+        if (p.type) {
+          setPatientType(p.type);
+          let right = p.type;
+          if (p.nationality === 'INTERNATIONAL') right += 'TR';
+          setBillingRight(right);
+        }
+        if (p.doctor) setDoctorName(p.doctor);
+        if (p.insurance) setInsurance(p.insurance);
+        toast.success("พบข้อมูลผู้ป่วย", "ดึงข้อมูลจาก iMed สำเร็จ");
+      }
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [hn, editingId]);
 
   // --- Calculation Hook ---
   const { getPrice, fmt, drugTotal, nurseTotal, prepTotal, pharmaTotal, grandTotal, totalCourse, pharmaItems, nurseItems } =
@@ -98,6 +120,7 @@ export default function CostEstimator() {
 
       setSelectedItems(r.selectedItems || []);
       setEditingId(r.id);
+      if (r.status === 'สมบูรณ์') setIsViewMode(true);
     } else {
       if (s.hn) setHn(s.hn);
       if (s.patientName) setPatientName(s.patientName);
@@ -153,6 +176,7 @@ export default function CostEstimator() {
   const updateQuantity = (id, d) => setSelectedItems(prev => prev.map(i => i.id === id ? { ...i, quantity: Math.max(1, i.quantity + d) } : i));
   const updateGroupQuantity = (gid, d) => setSelectedItems(prev => prev.map(i => i.setInstanceId === gid ? { ...i, quantity: Math.max(1, i.quantity + d) } : i));
   const updateDose = (id, dose) => setSelectedItems(prev => prev.map(i => i.id === id ? { ...i, dose } : i));
+  const updateCustomPrice = (id, price) => setSelectedItems(prev => prev.map(i => i.id === id ? { ...i, customPrice: price } : i));
   const removeItem = (id) => setSelectedItems(prev => prev.filter(i => i.id !== id));
   const removeGroup = (gid) => setSelectedItems(prev => prev.filter(i => i.setInstanceId !== gid));
 
@@ -233,23 +257,25 @@ export default function CostEstimator() {
   const inputCls = "w-full border border-slate-200 rounded-lg py-2 px-3 text-slate-900 text-sm focus:outline-none focus:border-blue-500";
 
   // --- Shared ItemTable props ---
-  const itemTableProps = { getPrice, fmt, onUpdateQuantity: updateQuantity, onUpdateGroupQuantity: updateGroupQuantity, onUpdateDose: updateDose, onRemoveItem: removeItem, onRemoveGroup: removeGroup };
+  const itemTableProps = { getPrice, fmt, onUpdateQuantity: updateQuantity, onUpdateGroupQuantity: updateGroupQuantity, onUpdateDose: updateDose, onRemoveItem: removeItem, onRemoveGroup: removeGroup, onUpdateCustomPrice: updateCustomPrice, isViewMode };
 
   return (
     <>
       <style>{`@media print{@page{size:A4;margin:10mm;}body *{visibility:hidden!important;}#print-area,#print-area *{visibility:visible!important;}#print-area{position:fixed;top:0;left:0;width:100%;}.no-print{display:none!important;}}`}</style>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-[1400px] mx-auto pb-10">
+      <div className={`grid grid-cols-1 ${isViewMode ? 'lg:grid-cols-1' : 'lg:grid-cols-12'} gap-6 max-w-[1400px] mx-auto pb-10`}>
 
         {/* ===== Left Side ===== */}
-        <div className="lg:col-span-5 flex flex-col gap-5 no-print">
-          <RoleSwitcher currentRole={currentRole} isAdmin={isAdmin} userRole={userRole} onSwitch={handleRoleSwitch} />
-          <PatientInfoForm values={formValues} onChange={handleFormChange} masterData={{ doctors, diagnoses, assessors }} lblCls={lblCls} inputCls={inputCls} onAddDiagnosis={handleAddNewDiagnosis} />
-          <SearchPanel searchQuery={searchQuery} searchResults={searchResults} currentRole={currentRole} getPrice={getPrice} fmt={fmt} onSearchChange={setSearchQuery} onAddItem={handleAddItem} onNavigateAddNew={() => navigate('/add-item', { state: { fromEstimator: true } })} />
-        </div>
+        {!isViewMode && (
+          <div className="lg:col-span-5 flex flex-col gap-5 no-print">
+            <RoleSwitcher currentRole={currentRole} isAdmin={isAdmin} userRole={userRole} onSwitch={handleRoleSwitch} />
+            <PatientInfoForm values={formValues} onChange={handleFormChange} masterData={{ doctors, diagnoses, assessors }} lblCls={lblCls} inputCls={inputCls} onAddDiagnosis={handleAddNewDiagnosis} />
+            <SearchPanel searchQuery={searchQuery} searchResults={searchResults} currentRole={currentRole} getPrice={getPrice} fmt={fmt} onSearchChange={setSearchQuery} onAddItem={handleAddItem} onNavigateAddNew={() => navigate('/add-item', { state: { fromEstimator: true } })} />
+          </div>
+        )}
 
         {/* ===== Right Preview Panel ===== */}
-        <div id="print-area" className="lg:col-span-7 flex flex-col gap-4">
+        <div id="print-area" className={`${isViewMode ? 'max-w-[900px] mx-auto w-full' : 'lg:col-span-7'} flex flex-col gap-4`}>
           <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm min-h-[700px] flex flex-col relative overflow-hidden">
 
             {/* Header */}
@@ -292,7 +318,7 @@ export default function CostEstimator() {
                   <span className="text-xs font-black text-blue-900">{fmt(pharmaTotal)}</span>
                 </div>
                 <div className="p-4">
-                  {pharmaItems.length > 0 ? <ItemTable items={pharmaItems} {...itemTableProps} /> : <div className="text-center py-4 text-[0.65rem] font-bold text-slate-300">ไม่มีรายการยา</div>}
+                  {pharmaItems.length > 0 ? <ItemTable items={pharmaItems} {...itemTableProps} isReadOnlySection={currentRole !== "pharma"} /> : <div className="text-center py-4 text-[0.65rem] font-bold text-slate-300">ไม่มีรายการยา</div>}
                 </div>
               </div>
 
@@ -303,7 +329,7 @@ export default function CostEstimator() {
                   <span className="text-xs font-black text-indigo-900">{fmt(nurseTotal)}</span>
                 </div>
                 <div className="p-4">
-                  {nurseItems.length > 0 ? <ItemTable items={nurseItems} {...itemTableProps} /> : <div className="text-center py-4 text-[0.65rem] font-bold text-slate-300">ไม่มีรายการบริการ</div>}
+                  {nurseItems.length > 0 ? <ItemTable items={nurseItems} {...itemTableProps} isReadOnlySection={currentRole !== "nurse"} /> : <div className="text-center py-4 text-[0.65rem] font-bold text-slate-300">ไม่มีรายการบริการ</div>}
                 </div>
               </div>
             </div>
@@ -335,10 +361,25 @@ export default function CostEstimator() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 no-print">
-                  <button onClick={() => handleSave()} className="bg-white text-slate-900 py-3 rounded-xl font-black text-xs uppercase hover:bg-slate-50 border-2 border-slate-100 shadow-sm active:scale-95">
-                    {editingId ? "อัปเดตข้อมูล" : (currentRole === "pharma" ? "บันทึกและส่งต่อพยาบาล" : "บันทึกและส่งต่อเภสัช")}
-                  </button>
-                  <button onClick={handleSaveAndPrint} className="bg-[#0F294D] text-white py-3 rounded-xl font-black text-xs uppercase hover:bg-slate-800 transition-all shadow-lg active:scale-95">บันทึกและพิมพ์ใบประเมินราคา</button>
+                  {isViewMode ? (
+                    <>
+                      <button onClick={() => navigate('/patients')} className="bg-white text-slate-900 py-3 rounded-xl font-black text-xs uppercase hover:bg-slate-50 border-2 border-slate-100 shadow-sm active:scale-95">
+                        กลับสู่หน้ารายชื่อผู้ป่วย
+                      </button>
+                      <button onClick={() => window.print()} className="bg-[#0F294D] text-white py-3 rounded-xl font-black text-xs uppercase hover:bg-slate-800 transition-all shadow-lg active:scale-95">
+                        พิมพ์ใบประเมินราคา
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => handleSave()} className="bg-white text-slate-900 py-3 rounded-xl font-black text-xs uppercase hover:bg-slate-50 border-2 border-slate-100 shadow-sm active:scale-95">
+                        {editingId ? "อัปเดตข้อมูล" : (currentRole === "pharma" ? "บันทึกและส่งต่อพยาบาล" : "บันทึกและส่งต่อเภสัช")}
+                      </button>
+                      <button onClick={handleSaveAndPrint} className="bg-[#0F294D] text-white py-3 rounded-xl font-black text-xs uppercase hover:bg-slate-800 transition-all shadow-lg active:scale-95">
+                        บันทึกและพิมพ์ใบประเมินราคา
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             )}

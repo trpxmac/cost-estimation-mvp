@@ -1,9 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-// ✅ เอา medicalItems ออก และเหลือแค่ getAllItems อย่างเดียว
-import { getAllItems } from '../data';
+import { getAllMedications, deleteDrug } from '../api';
 import { useToast } from '../components/Toast';
-import { Search, ArrowUpDown, DollarSign, Tag, Plus, Pencil } from 'lucide-react';
+import { Search, ArrowUpDown, DollarSign, Tag, Plus, Pencil, Trash2 } from 'lucide-react';
 
 const TYPES = ['OPD', 'IPD', 'OPDTR', 'IPDTR'];
 
@@ -14,13 +13,40 @@ export default function DrugPrices() {
   const [sortBy, setSortBy] = useState('Common_name');
   const [sortDir, setSortDir] = useState('asc');
   const [filterType, setFilterType] = useState('all'); // 'all' | 'drug' | 'preparation'
+  const [confirmDialog, setConfirmDialog] = useState(null);
 
-  // ✅ ดึงข้อมูลทั้งหมดมาเก็บไว้ในตัวแปร allItems
-  const allItems = useMemo(() => getAllItems(), []);
+  const [allItems, setAllItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getAllMedications().then(data => {
+      setAllItems(data);
+      setLoading(false);
+    });
+  }, []);
 
   const handleSort = (col) => {
     if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortBy(col); setSortDir('asc'); }
+  };
+
+  const handleDeleteDrug = (item) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'ยืนยันการลบรายการ',
+      message: `คุณต้องการลบ "${item.Common_name}" ใช่หรือไม่?`,
+      onConfirm: async () => {
+        try {
+          await deleteDrug(item.itemCode);
+          toast.success('ลบรายการสำเร็จ', 'ระบบอัปเดตข้อมูลแล้ว');
+          const data = await getAllMedications();
+          setAllItems(data);
+        } catch (e) {
+          toast.error('เกิดข้อผิดพลาด', 'ไม่สามารถลบรายการได้');
+        }
+        setConfirmDialog(null);
+      }
+    });
   };
 
   const formatCurrency = (val) =>
@@ -32,8 +58,9 @@ export default function DrugPrices() {
     // ✅ ใช้ข้อมูลจาก allItems เพื่อมาทำการกรอง (Filter)
     let items = [...allItems];
 
-    if (filterType === 'drug') items = items.filter(i => !i.isPreparation);
-    if (filterType === 'preparation') items = items.filter(i => i.isPreparation);
+    if (filterType === 'drug') items = items.filter(i => !i.isSet && i.category !== 'nurse');
+    if (filterType === 'set') items = items.filter(i => i.isSet);
+    if (filterType === 'nurse') items = items.filter(i => i.category === 'nurse');
 
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -62,8 +89,8 @@ export default function DrugPrices() {
   );
 
   // ✅ Stats: เปลี่ยนจากการใช้ medicalItems (ที่ไม่มีแล้ว) มาเป็น allItems แทน
-  const totalDrugs = allItems.filter(i => !i.isPreparation).length;
-  const totalPrep = allItems.filter(i => i.isPreparation).length;
+  const totalDrugs = allItems.filter(i => !i.isSet).length;
+  const totalPrep = allItems.filter(i => i.isSet).length;
 
   return (
     <div className="max-w-[1200px] mx-auto">
@@ -92,7 +119,9 @@ export default function DrugPrices() {
           <div className="flex gap-2">
             {[
               { v: 'all', l: 'All' },
-              { v: 'preparation', l: 'Item Set' }
+              { v: 'drug', l: 'Drug' },
+              { v: 'nurse', l: 'Nurse Fee' },
+              { v: 'set', l: 'Item Set' }
             ].map(f => (
               <button key={f.v} onClick={() => setFilterType(f.v)}
                 className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${filterType === f.v ? 'bg-[#0F294D] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
@@ -142,19 +171,23 @@ export default function DrugPrices() {
                 </tr>
               ) : filtered.map((item, idx) => (
                 <tr key={item.itemCode}
-                  className={`border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors ${item.isPreparation ? 'bg-amber-50' : ''}`}>
+                  className={`border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors ${item.isSet ? 'bg-amber-50' : ''}`}>
                   <td className="p-3 font-mono text-xs text-slate-400">{item.itemCode}</td>
                   <td className="p-3">
                     <div className="font-medium text-slate-900">{item.Common_name}</div>
                   </td>
                   <td className="p-3 text-center">
-                    {item.isPreparation
+                    {item.isSet
                       ? <span className="text-[0.65rem] px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full font-semibold">Item Set</span>
+                      : item.category === 'nurse'
+                      ? <span className="text-[0.65rem] px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-semibold">Nurse</span>
                       : <span className="text-[0.65rem] px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-semibold">Drug</span>
                     }
                   </td>
                   <td className="p-3 text-center">
-                    {item.stock !== undefined ? (
+                    {item.category === 'nurse' ? (
+                      <span className="text-slate-300">-</span>
+                    ) : item.stock !== undefined && item.stock !== null ? (
                       <span className={`font-black ${item.stock <= 5 ? 'text-rose-500' : 'text-slate-700'}`}>
                         {item.stock}
                       </span>
@@ -173,11 +206,19 @@ export default function DrugPrices() {
                     );
                   })}
                   <td className="p-3 text-center">
-                    <button
-                      onClick={() => navigate('/add-item', { state: { editItem: item } })}
-                      className="flex items-center gap-1 mx-auto px-3 py-1.5 bg-white text-[#0F294D] border border-slate-200 rounded-lg text-xs font-semibold hover:bg-slate-50 transition-colors shadow-sm">
-                      <Pencil size={12} /> Edit
-                    </button>
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        onClick={() => navigate('/add-item', { state: { editItem: item } })}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-white text-[#0F294D] border border-slate-200 rounded-lg text-xs font-semibold hover:bg-slate-50 transition-colors shadow-sm">
+                        <Pencil size={12} /> Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteDrug(item)}
+                        className="flex items-center gap-1 px-2 py-1.5 bg-white text-rose-600 border border-slate-200 rounded-lg text-xs font-semibold hover:bg-rose-50 transition-colors shadow-sm"
+                        title="Delete">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -189,6 +230,27 @@ export default function DrugPrices() {
           <span>* Unit prices in THB | Data synchronized with iMed API</span>
         </div>
       </div>
+
+      {/* Confirm Modal */}
+      {confirmDialog?.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl flex flex-col items-center text-center">
+            <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mb-4">
+              <Trash2 size={32} />
+            </div>
+            <h3 className="text-xl font-black text-slate-800 mb-2">{confirmDialog.title}</h3>
+            <p className="text-sm text-slate-500 font-bold mb-6">{confirmDialog.message}</p>
+            <div className="flex gap-3 w-full">
+              <button onClick={() => setConfirmDialog(null)} className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl font-black text-sm hover:bg-slate-200 transition-colors">
+                ยกเลิก
+              </button>
+              <button onClick={confirmDialog.onConfirm} className="flex-1 bg-red-500 text-white py-3 rounded-xl font-black text-sm hover:bg-red-600 transition-colors shadow-lg shadow-red-500/30">
+                ยืนยันการลบ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
