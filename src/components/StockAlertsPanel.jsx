@@ -26,6 +26,7 @@ export default function StockAlertsPanel({
   onStockThresholdChange,
 }) {
   const [activeOrderCode, setActiveOrderCode] = useState(null);
+  const [rescheduleCode, setRescheduleCode] = useState(null);
   const canOrder = userRole === 'pharma' || userRole === 'admin';
 
   // --- Build stock lookup map ---
@@ -223,29 +224,66 @@ export default function StockAlertsPanel({
                     {/* Right: order button */}
                     <div className="flex flex-col items-end justify-center flex-shrink-0 ml-2">
                       {isOrdered ? (
-                        <div className="flex flex-col items-end">
-                          <button
-                            disabled
-                            className={`flex items-center gap-1 font-black text-[0.65rem] px-3.5 py-2 rounded-full border shadow-sm cursor-default transition-all duration-300 ${
-                              isOverdue
-                                ? 'bg-rose-600 text-white border-rose-500 shadow-rose-200'
-                                : 'bg-amber-500 text-white border-amber-400 shadow-amber-100'
-                            }`}
-                          >
-                            {isOverdue ? (
-                              <>
-                                <AlertTriangle size={12} className="stroke-[3]" /> สั่งแล้ว (ล่าช้า ⚠️)
-                              </>
-                            ) : (
-                              <>
-                                <Check size={12} className="stroke-[3]" /> สั่งแล้ว
-                              </>
-                            )}
-                          </button>
-                          <span className="text-[0.6rem] text-slate-400 font-bold mt-1 text-right">
-                            {elapsedDays === 0 ? 'สั่งวันนี้' : `สั่งแล้วเมื่อ ${elapsedDays} วันก่อน`}
-                          </span>
-                        </div>
+                        rescheduleCode === alert.code ? (
+                          <div className="flex flex-col items-end gap-1.5 animate-in slide-in-from-right-4 duration-200">
+                            <span className="text-[0.55rem] font-bold text-slate-400">กำหนดวันรับใหม่:</span>
+                            <div className="flex gap-1">
+                              {[3, 5, 7].map(days => (
+                                <button
+                                  key={days}
+                                  onClick={() => {
+                                    onMarkOrdered(alert.code, days, alert.stock);
+                                    setRescheduleCode(null);
+                                  }}
+                                  className="bg-amber-100 hover:bg-amber-600 hover:text-white text-amber-700 font-bold text-[0.65rem] px-2 py-1.5 rounded-md transition-colors"
+                                >
+                                  {days}ว
+                                </button>
+                              ))}
+                              <button
+                                onClick={() => setRescheduleCode(null)}
+                                className="bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-[0.65rem] px-2 py-1.5 rounded-md transition-colors"
+                              >
+                                ปิด
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-end">
+                            <button
+                              disabled
+                              className={`flex items-center gap-1 font-black text-[0.65rem] px-3.5 py-2 rounded-full border shadow-sm cursor-default transition-all duration-300 ${
+                                isOverdue
+                                  ? 'bg-rose-600 text-white border-rose-500 shadow-rose-200'
+                                  : 'bg-amber-500 text-white border-amber-400 shadow-amber-100'
+                              }`}
+                            >
+                              {isOverdue ? (
+                                <>
+                                  <AlertTriangle size={12} className="stroke-[3]" /> สั่งแล้ว (ล่าช้า ⚠️)
+                                </>
+                              ) : (
+                                <>
+                                  <Check size={12} className="stroke-[3]" /> สั่งแล้ว
+                                </>
+                              )}
+                            </button>
+                            <div className="flex items-center gap-1.5 mt-1 text-[0.6rem] font-bold text-slate-400">
+                              <span>{elapsedDays === 0 ? 'สั่งวันนี้' : `สั่งแล้วเมื่อ ${elapsedDays} วันก่อน`}</span>
+                              {canOrder && (
+                                <>
+                                  <span>•</span>
+                                  <button
+                                    onClick={() => setRescheduleCode(alert.code)}
+                                    className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                                  >
+                                    เลื่อนส่ง
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        )
                       ) : canOrder ? (
                         activeOrderCode === alert.code ? (
                           <div className="flex gap-1 animate-in slide-in-from-right-4 duration-200">
