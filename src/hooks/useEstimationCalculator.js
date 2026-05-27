@@ -6,9 +6,25 @@
 export const fmt = (v) =>
   new Intl.NumberFormat("th-TH", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(v);
 
+export function shouldSpecifyPrice(itemCode, billingRight) {
+  if (itemCode === 'NRS-DOCTOR' || itemCode === 'NRS-ONCO') {
+    return true;
+  }
+  if (itemCode === 'NRS-SUPPLY') {
+    return billingRight === 'IPD' || billingRight === 'IPDTR';
+  }
+  if (itemCode === 'NRS-LAB') {
+    return billingRight === 'IPD';
+  }
+  return false;
+}
+
 export function getItemPrice(item, billingRight) {
-  if (item.customPrice !== undefined && item.customPrice !== null && item.customPrice !== "") {
-    return Number(item.customPrice);
+  if (shouldSpecifyPrice(item.itemCode, billingRight)) {
+    if (item.customPrice !== undefined && item.customPrice !== null && item.customPrice !== '') {
+      return Number(item.customPrice);
+    }
+    return 0;
   }
   if (item.isSet && item.items) {
     return item.items.reduce((s, i) => s + (i[billingRight] || i["OPD"] || 0), 0);

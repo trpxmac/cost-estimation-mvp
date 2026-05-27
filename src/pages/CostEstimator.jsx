@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { searchMedications, saveEstimation, updateEstimation, getEstimationById, getDoctors, getDiagnoses, getAssessors, addNewDiagnosis, getPatientByHN } from "../api";
 import { useToast } from "../components/Toast";
 import { Pill, Stethoscope } from "lucide-react";
+import { DRUG_SUB_CATEGORIES } from "../components/ItemTable";
 
 // --- Extracted Components ---
 import RoleSwitcher from "../components/RoleSwitcher";
@@ -37,6 +38,7 @@ export default function CostEstimator() {
   const [courseCycles, setCourseCycles] = useState(1);
   const [insurance, setInsurance] = useState("Self pay");
   const [agreement, setAgreement] = useState("agrees");
+  const [freeNote, setFreeNote] = useState("");
 
 
   // --- Role ---
@@ -117,10 +119,11 @@ export default function CostEstimator() {
       setCourseCycles(r.courseCycles || 1);
       setInsurance(r.insurance || "Self pay");
       setAgreement(r.agreement || "agrees");
+      setFreeNote(r.freeNote || "");
 
       setSelectedItems(r.selectedItems || []);
       setEditingId(r.id);
-      if (r.status === 'สมบูรณ์') setIsViewMode(true);
+      if (r.status === 'สมบูรณ์' && !s.forceEdit) setIsViewMode(true);
     } else {
       if (s.hn) setHn(s.hn);
       if (s.patientName) setPatientName(s.patientName);
@@ -177,6 +180,7 @@ export default function CostEstimator() {
   const updateGroupQuantity = (gid, d) => setSelectedItems(prev => prev.map(i => i.setInstanceId === gid ? { ...i, quantity: Math.max(1, i.quantity + d) } : i));
   const updateDose = (id, dose) => setSelectedItems(prev => prev.map(i => i.id === id ? { ...i, dose } : i));
   const updateCustomPrice = (id, price) => setSelectedItems(prev => prev.map(i => i.id === id ? { ...i, customPrice: price } : i));
+  const updateNote = (id, note) => setSelectedItems(prev => prev.map(i => i.id === id ? { ...i, note } : i));
   const removeItem = (id) => setSelectedItems(prev => prev.filter(i => i.id !== id));
   const removeGroup = (gid) => setSelectedItems(prev => prev.filter(i => i.setInstanceId !== gid));
 
@@ -200,7 +204,7 @@ export default function CostEstimator() {
 
   // --- Save Logic ---
   const handleSave = async (isSilent = false) => {
-    if (grandTotal === 0 && selectedItems.length === 0) { toast.warning("กรุณาเพิ่มรายการ"); return null; }
+    if (selectedItems.length === 0) { toast.warning("กรุณาเพิ่มรายการ"); return null; }
     try {
       let finalItems = [...selectedItems];
       const recordId = editingId || Date.now().toString();
@@ -222,7 +226,7 @@ export default function CostEstimator() {
       const record = {
         id: recordId, savedAt: new Date().toISOString(),
         hn, vnan, patientName, doctorName, diagnosis, assessor, bsa,
-        patientType, billingRight, insurance, agreement,
+        patientType, billingRight, insurance, agreement, freeNote,
         prepFeeTotal: prpTotal, courseCycles,
         selectedItems: finalItems,
         pharmaTotal: pTotal, nurseTotal: nTotal, grandTotal: gTotal, totalCourse: gTotal * courseCycles,
@@ -249,19 +253,82 @@ export default function CostEstimator() {
   };
 
   const handleSaveAndPrint = async () => {
-    const savedId = await handleSave(true);
-    if (savedId) setTimeout(() => window.print(), 800);
+    if (selectedItems.length === 0) { toast.warning("กรุณาเพิ่มรายการก่อนพิมพ์"); return; }
+    try {
+      let finalItems = [...selectedItems];
+      const recordId = editingId || Date.now().toString();
+
+      if (editingId) {
+        const latest = await getEstimationById(editingId);
+        if (latest) finalItems = mergeRoleItems(selectedItems, latest.selectedItems, currentRole);
+      }
+
+      const status = determineStatus(finalItems);
+      const pTotal = finalItems.filter(i => (i.category === "pharma" || !i.category) && !i.isPreparation).reduce((s, i) => s + getItemPrice(i, billingRight) * i.quantity, 0);
+      const nTotal = finalItems.filter(i => i.category === "nurse" && !i.isPreparation).reduce((s, i) => s + getItemPrice(i, billingRight) * i.quantity, 0);
+      const prpTotal = finalItems.filter(i => i.isPreparation).reduce((s, i) => s + getItemPrice(i, billingRight) * i.quantity, 0);
+      const gTotal = pTotal + nTotal + prpTotal;
+
+      const record = {
+        id: recordId, savedAt: new Date().toISOString(),
+        hn, vnan, patientName, doctorName, diagnosis, assessor, bsa,
+        patientType, billingRight, insurance, agreement, freeNote,
+        prepFeeTotal: prpTotal, courseCycles,
+        selectedItems: finalItems,
+        pharmaTotal: pTotal, nurseTotal: nTotal, grandTotal: gTotal, totalCourse: gTotal * courseCycles,
+        status, lastUpdatedBy: currentRole
+      };
+
+      if (editingId) await updateEstimation(editingId, record);
+      else await saveEstimation(record);
+
+      if (!editingId) setEditingId(recordId);
+      setSelectedItems(finalItems);
+      toast.success("บันทึกข้อมูลสำเร็จ กำลังเปิดหน้าพิมพ์...");
+      setTimeout(() => window.print(), 800);
+    } catch (e) {
+      toast.error("บันทึกไม่สำเร็จ กรุณาลองอีกครั้ง");
+    }
   };
 
   const lblCls = "block text-[0.65rem] font-black text-slate-400 mb-1 uppercase tracking-wider";
   const inputCls = "w-full border border-slate-200 rounded-lg py-2 px-3 text-slate-900 text-sm focus:outline-none focus:border-blue-500";
 
   // --- Shared ItemTable props ---
-  const itemTableProps = { getPrice, fmt, onUpdateQuantity: updateQuantity, onUpdateGroupQuantity: updateGroupQuantity, onUpdateDose: updateDose, onRemoveItem: removeItem, onRemoveGroup: removeGroup, onUpdateCustomPrice: updateCustomPrice, isViewMode };
+  const itemTableProps = { getPrice, fmt, onUpdateQuantity: updateQuantity, onUpdateGroupQuantity: updateGroupQuantity, onUpdateDose: updateDose, onRemoveItem: removeItem, onRemoveGroup: removeGroup, onUpdateCustomPrice: updateCustomPrice, onUpdateNote: updateNote, isViewMode, billingRight };
 
   return (
     <>
-      <style>{`@media print{@page{size:A4;margin:10mm;}body *{visibility:hidden!important;}#print-area,#print-area *{visibility:visible!important;}#print-area{position:fixed;top:0;left:0;width:100%;}.no-print{display:none!important;}}`}</style>
+      <style>{`
+        @media print {
+          @page {
+            size: A4;
+            margin: 15mm 10mm 15mm 10mm;
+          }
+          html, body, #root, main, .overflow-hidden, [class*="h-screen"] {
+            height: auto !important;
+            overflow: visible !important;
+            min-height: 0 !important;
+          }
+          body * {
+            visibility: hidden !important;
+          }
+          #print-area, #print-area * {
+            visibility: visible !important;
+          }
+          #print-area {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            overflow: visible !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+        }
+      `}</style>
 
       <div className={`grid grid-cols-1 ${isViewMode ? 'lg:grid-cols-1' : 'lg:grid-cols-12'} gap-6 max-w-[1400px] mx-auto pb-10`}>
 
@@ -311,14 +378,41 @@ export default function CostEstimator() {
 
             {/* Summary Sections */}
             <div className="flex-1 space-y-5">
-              {/* Pharma Part */}
+              {/* Pharma Part — grouped by subcategory */}
               <div className="rounded-2xl border transition-all bg-white border-blue-200">
                 <div className="flex justify-between items-center px-4 py-2 border-b border-inherit bg-blue-50/50 rounded-t-2xl">
                   <span className="text-[0.65rem] font-black text-blue-700 uppercase flex items-center gap-2"><Pill size={14} /> ส่วนงานเภสัชกรรม</span>
                   <span className="text-xs font-black text-blue-900">{fmt(pharmaTotal)}</span>
                 </div>
                 <div className="p-4">
-                  {pharmaItems.length > 0 ? <ItemTable items={pharmaItems} {...itemTableProps} isReadOnlySection={currentRole !== "pharma"} /> : <div className="text-center py-4 text-[0.65rem] font-bold text-slate-300">ไม่มีรายการยา</div>}
+                  {pharmaItems.length > 0 ? (() => {
+                    const grouped = {};
+                    pharmaItems.forEach(item => {
+                      const cat = item.drugSubCategory || 'other';
+                      if (!grouped[cat]) grouped[cat] = [];
+                      grouped[cat].push(item);
+                    });
+                    return (
+                      <div className="space-y-3">
+                        {DRUG_SUB_CATEGORIES.map(sc => {
+                          const items = grouped[sc.value];
+                          if (!items?.length) return null;
+                          const subTotal = items.reduce((s, i) => s + getPrice(i) * i.quantity, 0);
+                          return (
+                            <div key={sc.value} className="border-t border-slate-100 pt-3">
+                              <div className="flex justify-between items-center mb-2">
+                                <span className={`text-[0.6rem] font-black px-2 py-0.5 rounded border ${sc.color}`}>
+                                  {sc.label} <span className="opacity-60">({sc.labelEn})</span>
+                                </span>
+                                <span className="text-[0.65rem] font-black text-slate-600">{fmt(subTotal)}</span>
+                              </div>
+                              <ItemTable items={items} {...itemTableProps} isReadOnlySection={currentRole !== "pharma"} />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })() : <div className="text-center py-4 text-[0.65rem] font-bold text-slate-300">ไม่มีรายการยา</div>}
                 </div>
               </div>
 
@@ -333,6 +427,37 @@ export default function CostEstimator() {
                 </div>
               </div>
             </div>
+
+            {/* Free Note Area */}
+            {(!isViewMode || freeNote) && (
+              <div className="mt-5 border-t border-slate-100 pt-4">
+                {isViewMode ? (
+                  freeNote && (
+                    <div className="text-[0.75rem] text-slate-600 whitespace-pre-wrap leading-relaxed">
+                      <span className="font-black text-slate-400 uppercase text-[0.6rem] block mb-1">หมายเหตุ / Notes</span>
+                      {freeNote}
+                    </div>
+                  )
+                ) : (
+                  <>
+                    <div className="text-[0.6rem] font-black text-slate-400 uppercase tracking-wider mb-1 no-print">หมายเหตุ / Notes</div>
+                    <textarea
+                      value={freeNote}
+                      onChange={(e) => setFreeNote(e.target.value)}
+                      rows={3}
+                      placeholder="พิมพ์หมายเหตุหรือข้อความเพิ่มเติม..."
+                      className="w-full border border-slate-200 rounded-xl py-2.5 px-3 text-[0.75rem] text-slate-700 focus:outline-none focus:border-blue-400 resize-none no-print placeholder:text-slate-300"
+                    />
+                    {freeNote && (
+                      <div className="text-[0.75rem] text-slate-600 whitespace-pre-wrap leading-relaxed hidden print:block">
+                        <span className="font-black text-slate-400 uppercase text-[0.6rem] block mb-1">หมายเหตุ / Notes</span>
+                        {freeNote}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
 
             {/* Sum Section */}
             {grandTotal > 0 && (

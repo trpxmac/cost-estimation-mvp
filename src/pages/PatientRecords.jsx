@@ -270,22 +270,32 @@ export default function PatientRecords() {
                   <span className="text-xl">{formatCurrency(selectedRecord.totalCourse)}</span>
                 </div>
 
-                <button 
-                  onClick={() => navigate('/estimator', { state: { editRecord: selectedRecord } })} 
-                  className={`w-full text-white py-3.5 rounded-xl font-black text-sm transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 ${selectedRecord.status === 'สมบูรณ์' ? 'bg-[#0F294D] hover:bg-slate-800' : 'bg-blue-600 hover:bg-blue-700'}`}
-                >
-                  {selectedRecord.status === 'สมบูรณ์' ? (
-                    <>
-                      <FileText size={18} />
-                      พิมพ์และแสดงใบประมาณการค่าใช้จ่าย
-                    </>
-                  ) : (
-                    <>
+                {selectedRecord.status === 'สมบูรณ์' ? (
+                  <div className="flex gap-2 w-full">
+                    <button 
+                      onClick={() => navigate('/estimator', { state: { editRecord: selectedRecord, forceEdit: true } })} 
+                      className="flex-1 bg-white border-2 border-slate-200 text-slate-700 py-3.5 rounded-xl font-black text-sm transition-all active:scale-95 hover:bg-slate-50 hover:border-slate-300 flex items-center justify-center gap-2"
+                    >
                       <Pencil size={18} />
-                      ดำเนินการประเมินต่อ (Edit Estimation)
-                    </>
-                  )}
-                </button>
+                      แก้ไข
+                    </button>
+                    <button 
+                      onClick={() => navigate('/estimator', { state: { editRecord: selectedRecord } })} 
+                      className="flex-[2] text-white bg-[#0F294D] py-3.5 rounded-xl font-black text-sm transition-all shadow-md active:scale-95 hover:bg-slate-800 flex items-center justify-center gap-2"
+                    >
+                      <FileText size={18} />
+                      พิมพ์และแสดงใบประเมิน
+                    </button>
+                  </div>
+                ) : (
+                  <button 
+                    onClick={() => navigate('/estimator', { state: { editRecord: selectedRecord } })} 
+                    className="w-full text-white bg-blue-600 hover:bg-blue-700 py-3.5 rounded-xl font-black text-sm transition-all shadow-md active:scale-95 flex items-center justify-center gap-2"
+                  >
+                    <Pencil size={18} />
+                    ดำเนินการประเมินต่อ (Edit Estimation)
+                  </button>
+                )}
               </div>
             ) : (
               <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl h-full flex flex-col items-center justify-center text-slate-400 p-12">

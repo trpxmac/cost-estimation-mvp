@@ -1,10 +1,21 @@
 import { Plus, Minus, Trash2, X } from 'lucide-react';
+import { shouldSpecifyPrice } from '../hooks/useEstimationCalculator';
 
 /**
  * Renders the item table for pharma or nurse sections.
  * Handles both individual items and grouped Set items with headers.
  */
-export default function ItemTable({ items, getPrice, fmt, onUpdateQuantity, onUpdateGroupQuantity, onUpdateDose, onRemoveItem, onRemoveGroup, onUpdateCustomPrice, isViewMode, isReadOnlySection }) {
+const DRUG_SUB_CATEGORIES = [
+  { value: 'chemo',    label: 'ยาเคมีบำบัด',      labelEn: 'Chemotherapy',     color: 'text-blue-600 bg-blue-50 border-blue-200' },
+  { value: 'targeted', label: 'ยาพุ่งเป้า',          labelEn: 'Targeted Therapy',  color: 'text-purple-600 bg-purple-50 border-purple-200' },
+  { value: 'gcsf',     label: 'ยากระตุ้นเม็ดเลือด',      labelEn: 'G-CSF',            color: 'text-green-600 bg-green-50 border-green-200' },
+  { value: 'home',     label: 'ยากลับบ้าน',         labelEn: 'Home Medication',   color: 'text-amber-600 bg-amber-50 border-amber-200' },
+  { value: 'other',    label: 'ยาอื่นๆ',            labelEn: 'Other',             color: 'text-slate-500 bg-slate-50 border-slate-200' },
+];
+
+export { DRUG_SUB_CATEGORIES };
+
+export default function ItemTable({ items, getPrice, fmt, onUpdateQuantity, onUpdateGroupQuantity, onUpdateDose, onRemoveItem, onRemoveGroup, onUpdateCustomPrice, onUpdateNote, isViewMode, isReadOnlySection, billingRight }) {
   const readOnly = isViewMode || isReadOnlySection;
   // Sort items so sets stay together
   const sortedItems = [...items].sort((a, b) => {
@@ -80,13 +91,17 @@ export default function ItemTable({ items, getPrice, fmt, onUpdateQuantity, onUp
               <td className={`py-2 ${i.setInstanceId ? 'pl-8' : 'px-2'}`}>
                 <div className="font-bold text-slate-800 text-[0.7rem]">
                   {i.Common_name}
-                  {i.stock !== undefined && i.stock !== null && i.category !== 'nurse' && (
-                    <span className={`ml-1 font-semibold ${i.stock <= 5 ? 'text-rose-500' : 'text-slate-400'}`}>
-                      (คงคลัง: {i.stock})
-                    </span>
-                  )}
                 </div>
                 <div className="text-[0.55rem] text-slate-400 font-mono no-print">{i.itemCode}</div>
+                {/* Subcategory label for pharma items */}
+                {(i.category === 'pharma' || !i.category) && !i.setInstanceId && i.drugSubCategory && (() => {
+                  const sc = DRUG_SUB_CATEGORIES.find(s => s.value === i.drugSubCategory);
+                  return sc ? (
+                    <span className={`inline-block mt-0.5 text-[0.5rem] font-black px-1.5 py-0.5 rounded border ${sc.color}`}>
+                      {sc.label}
+                    </span>
+                  ) : null;
+                })()}
               </td>
               <td className="py-2 text-center">
                 {readOnly ? (
@@ -119,11 +134,11 @@ export default function ItemTable({ items, getPrice, fmt, onUpdateQuantity, onUp
                 )}
               </td>
               <td className="py-2 text-right pr-2">
-                {(!readOnly && (i.itemCode === 'NRS-DOCTOR' || i.itemCode === 'NRS-ONCO')) ? (
+                {(!readOnly && shouldSpecifyPrice(i.itemCode, billingRight)) ? (
                   <div className="flex flex-col items-end gap-1">
                     <input
                       type="number"
-                      value={i.customPrice !== undefined ? i.customPrice : getPrice({ ...i, customPrice: undefined })}
+                      value={i.customPrice !== undefined ? i.customPrice : 0}
                       onChange={(e) => onUpdateCustomPrice(i.id, e.target.value)}
                       className="w-20 text-right bg-blue-50 border border-blue-200 rounded px-2 py-1 focus:border-blue-500 focus:outline-none font-black text-slate-900 no-print"
                     />

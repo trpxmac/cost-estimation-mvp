@@ -4,6 +4,7 @@ import { ChevronRight, Info, Save, Activity, PlusCircle, Pill, Stethoscope } fro
 import { addNewDrug, addNewDiagnosis } from '../api';
 import { useToast } from '../components/Toast';
 import SetItemEditor from '../components/SetItemEditor';
+import { DRUG_SUB_CATEGORIES } from '../components/ItemTable';
 
 const inputCls = 'w-full bg-white border border-slate-200 rounded-lg py-2.5 px-4 text-slate-900 text-[0.93rem] focus:outline-none focus:border-blue-500 focus:ring-[3px] focus:ring-blue-500/10';
 const selCls = inputCls + ' appearance-auto';
@@ -19,6 +20,7 @@ export default function AddNewItem() {
   const [drugCode, setDrugCode] = useState('');
   const [drugName, setDrugName] = useState('');
   const [drugCat, setDrugCat] = useState('pharma');
+  const [drugSubCat, setDrugSubCat] = useState('');
   const [drugStock, setDrugStock] = useState('');
   
   const [opd, setOpd] = useState('');
@@ -49,6 +51,7 @@ export default function AddNewItem() {
       setDrugCode(editItem.itemCode || '');
       setDrugName(editItem.Common_name || '');
       setDrugCat(editItem.category || 'pharma');
+      setDrugSubCat(editItem.drugSubCategory || '');
       setOpd(editItem.OPD || '');
       setIpd(editItem.IPD || '');
       setOpdtr(editItem.OPDTR || '');
@@ -80,6 +83,7 @@ export default function AddNewItem() {
         itemCode: drugCode,
         Common_name: drugName,
         category: drugCat,
+        drugSubCategory: drugCat === 'pharma' ? drugSubCat : '',
         OPD: opd,
         IPD: ipd,
         OPDTR: opdtr,
@@ -167,10 +171,20 @@ export default function AddNewItem() {
               </div>
               <div>
                 <label className={lblCls}>Category (ประเภท)</label>
-                <select className={selCls} value={drugCat} onChange={e => setDrugCat(e.target.value)}>
-                  <option value="pharma">💊 Pharma (ยา)</option>
-                  <option value="nurse">🩺 Nursing Service (ค่าบริการพยาบาล)</option>
-                </select>
+                <div className="flex gap-2">
+                  <select className={`${selCls} ${drugCat === 'pharma' ? 'w-1/2' : 'w-full'}`} value={drugCat} onChange={e => setDrugCat(e.target.value)}>
+                    <option value="pharma">💊 Pharma (ยา)</option>
+                    <option value="nurse">🩺 Nursing Service (ค่าบริการพยาบาล)</option>
+                  </select>
+                  {drugCat === 'pharma' && (
+                    <select className={`${selCls} w-1/2`} value={drugSubCat} onChange={e => setDrugSubCat(e.target.value)}>
+                      <option value="">-- ประเภทยา --</option>
+                      {DRUG_SUB_CATEGORIES.map(sc => (
+                        <option key={sc.value} value={sc.value}>{sc.label}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
               </div>
               {drugCat !== 'nurse' ? (
                 <div>

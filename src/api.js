@@ -311,6 +311,7 @@ export async function addNewDrug(drugData) {
     OPDTR: Number(drugData.OPDTR) || 0,
     IPDTR: Number(drugData.IPDTR) || 0,
     category: drugData.category || 'pharma',
+    drugSubCategory: drugData.drugSubCategory || '',
     stock: drugData.stock === null ? null : (drugData.stock !== undefined ? Number(drugData.stock) : 50),
     isSet: !!drugData.isSet,
     items: drugData.items,

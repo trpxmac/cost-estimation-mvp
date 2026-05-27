@@ -70,13 +70,17 @@ async function initDatabase() {
         items JSONB,
         is_preparation BOOLEAN,
         added_at TIMESTAMP,
-        is_deleted BOOLEAN DEFAULT FALSE
+        is_deleted BOOLEAN DEFAULT FALSE,
+        drug_sub_category VARCHAR(100)
       );
     `);
 
-    // Add is_deleted column if it doesn't exist (migration)
+    // Add columns if they do not exist (migration)
     await client.query(`
       ALTER TABLE custom_drugs ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;
+    `);
+    await client.query(`
+      ALTER TABLE custom_drugs ADD COLUMN IF NOT EXISTS drug_sub_category VARCHAR(100);
     `);
 
     await client.query(`
@@ -305,7 +309,8 @@ app.get('/api/custom-drugs', async (req, res) => {
       items: r.items,
       isPreparation: r.is_preparation,
       isDeleted: r.is_deleted,
-      addedAt: r.added_at ? r.added_at.toISOString() : null
+      addedAt: r.added_at ? r.added_at.toISOString() : null,
+      drugSubCategory: r.drug_sub_category
     }));
     res.json(mapped);
   } catch (err) {
@@ -319,14 +324,15 @@ app.post('/api/custom-drugs', async (req, res) => {
     await pool.query(`
       INSERT INTO custom_drugs (
         item_code, common_name, opd, ipd, opdtr, ipdtr,
-        category, stock, is_set, items, is_preparation, added_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        category, stock, is_set, items, is_preparation, added_at, drug_sub_category
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       ON CONFLICT (item_code) DO UPDATE SET
         common_name = EXCLUDED.common_name, opd = EXCLUDED.opd, ipd = EXCLUDED.ipd, opdtr = EXCLUDED.opdtr, ipdtr = EXCLUDED.ipdtr,
-        stock = EXCLUDED.stock, items = EXCLUDED.items
+        stock = EXCLUDED.stock, items = EXCLUDED.items, drug_sub_category = EXCLUDED.drug_sub_category
     `, [
       r.itemCode, r.Common_name, r.OPD || 0, r.IPD || 0, r.OPDTR || 0, r.IPDTR || 0,
-      r.category, r.stock !== undefined ? r.stock : 50, r.isSet || false, JSON.stringify(r.items || null), r.isPreparation || false, r.addedAt || new Date().toISOString()
+      r.category, r.stock !== undefined ? r.stock : 50, r.isSet || false, JSON.stringify(r.items || null), r.isPreparation || false, r.addedAt || new Date().toISOString(),
+      r.drugSubCategory || ''
     ]);
     res.json(r);
   } catch (err) {

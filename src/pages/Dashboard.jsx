@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getEstimations } from '../api';
+import { getEstimations, getAllMedications } from '../api';
 import {
   Calculator, Users, TrendingUp, FileText,
   Clock, Activity, DollarSign, ShieldCheck, CheckCircle2, ChevronRight
@@ -18,6 +18,8 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [allRecords, setAllRecords] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState('');
+  const [medications, setMedications] = useState([]);
+  const [stockThreshold, setStockThreshold] = useState(10);
 
   const [alertDays, setAlertDays] = useState(() => Number(localStorage.getItem('stock_alert_days') || 5));
   const [orderedItems, setOrderedItems] = useState(() => {
@@ -29,6 +31,9 @@ export default function Dashboard() {
 
   useEffect(() => {
     getEstimations().then(setAllRecords);
+    getAllMedications().then(meds => {
+      setMedications(meds.filter(m => m.category !== 'nurse'));
+    });
   }, []);
 
   const records = useMemo(() => {
@@ -41,13 +46,43 @@ export default function Dashboard() {
     localStorage.setItem('stock_alert_days', days);
   };
 
-  const handleMarkOrdered = (code, days) => {
+  const handleStockThresholdChange = (t) => {
+    setStockThreshold(t);
+    localStorage.setItem('stock_threshold', t);
+  };
+
+  const handleMarkOrdered = (code, days, currentStock) => {
     setOrderedItems(prev => {
-      const next = { ...prev, [code]: days };
+      const next = {
+        ...prev,
+        [code]: {
+          days,
+          stockAtOrder: currentStock,
+          orderedAt: new Date().toISOString()
+        }
+      };
       localStorage.setItem('ordered_stock_items', JSON.stringify(next));
       return next;
     });
   };
+
+  // Unfiltered demand map (all-time agreed patients demand)
+  const demandMapAll = useMemo(() => {
+    const map = {};
+    records.forEach(r => {
+      if (r.agreement !== 'agrees') return;
+      (r.selectedItems || []).forEach(item => {
+        if (item.category !== 'pharma' && item.category !== undefined) return;
+        if (item.isSet) return;
+        const code = item.itemCode;
+        if (!map[code]) {
+          map[code] = { code, name: item.Common_name, needed: 0 };
+        }
+        map[code].needed += (item.quantity || 1) * (r.courseCycles || 1);
+      });
+    });
+    return map;
+  }, [records]);
 
   const stockAlerts = useMemo(() => {
     const getDaysDiff = (dateStr) => {
@@ -57,8 +92,8 @@ export default function Dashboard() {
       return Math.ceil((today.getTime() - savedDate.getTime()) / (1000 * 60 * 60 * 24));
     };
 
-    // Dynamic demand calculation — show all pharma items needed by agreed patients
-    const realItemReq = {};
+    // 1. Calculate filtered demand
+    const filteredReq = {};
     records.forEach(r => {
       if (r.agreement !== 'agrees') return;
       const diffDays = getDaysDiff(r.savedAt);
@@ -68,13 +103,59 @@ export default function Dashboard() {
         if (item.category !== 'pharma' && item.category !== undefined) return;
         if (item.isSet) return;
         const code = item.itemCode;
-        if (!realItemReq[code]) realItemReq[code] = { code, name: item.Common_name, needed: 0 };
-        realItemReq[code].needed += (item.quantity || 1) * (r.courseCycles || 1);
+        if (!filteredReq[code]) filteredReq[code] = { code, name: item.Common_name, needed: 0 };
+        filteredReq[code].needed += (item.quantity || 1) * (r.courseCycles || 1);
       });
     });
 
-    return Object.values(realItemReq).sort((a, b) => b.needed - a.needed);
-  }, [records, alertDays]);
+    // 2. Ensure any item in orderedItems is included
+    Object.keys(orderedItems).forEach(code => {
+      if (!filteredReq[code]) {
+        const allDemand = demandMapAll[code];
+        const med = medications.find(m => m.itemCode === code);
+        const name = allDemand?.name || med?.name || code;
+        const needed = allDemand?.needed || 0;
+        filteredReq[code] = { code, name, needed };
+      }
+    });
+
+    return Object.values(filteredReq).sort((a, b) => b.needed - a.needed);
+  }, [records, alertDays, orderedItems, demandMapAll, medications]);
+
+  useEffect(() => {
+    let changed = false;
+    const next = { ...orderedItems };
+    
+    // Build current stock lookup
+    const stockMap = {};
+    medications.forEach(m => { if (m.itemCode) stockMap[m.itemCode] = m.stock; });
+
+    // Build current demand lookup based on all agreed records
+    const demandMap = {};
+    Object.entries(demandMapAll).forEach(([code, value]) => {
+      demandMap[code] = value.needed;
+    });
+
+    Object.entries(orderedItems).forEach(([code, value]) => {
+      const currentStock = stockMap[code] ?? null;
+      const stockAtOrder = (value && typeof value === 'object') ? value.stockAtOrder : null;
+      const currentDemand = demandMap[code] ?? 0;
+
+      // Clear if stock has increased OR if stock is now sufficient for demand
+      const stockIncreased = currentStock !== null && stockAtOrder !== null && currentStock > stockAtOrder;
+      const stockIsSufficient = currentStock !== null && currentStock >= currentDemand;
+
+      if (stockIncreased || stockIsSufficient) {
+        delete next[code];
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      setOrderedItems(next);
+      localStorage.setItem('ordered_stock_items', JSON.stringify(next));
+    }
+  }, [medications, orderedItems, demandMapAll]);
 
   // --- Utility ---
   const formatCurrency = (val) => new Intl.NumberFormat('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(val ?? 0);
@@ -190,7 +271,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Stock Alerts Panel */}
+      {/* Unified Stock + Demand Panel */}
       <StockAlertsPanel
         stockAlerts={stockAlerts}
         alertDays={alertDays}
@@ -198,7 +279,12 @@ export default function Dashboard() {
         onAlertDaysChange={handleAlertDaysChange}
         onMarkOrdered={handleMarkOrdered}
         userRole={user.role}
+        medications={medications}
+        stockThreshold={stockThreshold}
+        onStockThresholdChange={handleStockThresholdChange}
       />
+
+
 
       {/* Donut Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">

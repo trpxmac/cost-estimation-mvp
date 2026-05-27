@@ -33,11 +33,6 @@ export default function SearchPanel({ searchQuery, searchResults, currentRole, g
                 <div className="flex-1 pr-4">
                   <div className="font-bold text-slate-800 text-xs">
                     {item.Common_name}
-                    {item.stock !== undefined && item.stock !== null && item.category !== 'nurse' && (
-                      <span className={`ml-1.5 text-[0.6rem] font-semibold ${item.stock <= 5 ? 'text-rose-500' : 'text-slate-400'}`}>
-                        (คงคลัง: {item.stock})
-                      </span>
-                    )}
                     {item.isSet && <span className="ml-2 px-1.5 py-0.5 bg-indigo-100 text-indigo-600 rounded text-[0.5rem] font-black uppercase tracking-tighter">ITEM SET</span>}
                   </div>
                   <div className="text-[0.55rem] text-slate-400 font-mono">{item.itemCode}</div>
