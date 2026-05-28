@@ -15,7 +15,7 @@ const DRUG_SUB_CATEGORIES = [
 
 export { DRUG_SUB_CATEGORIES };
 
-export default function ItemTable({ items, getPrice, fmt, onUpdateQuantity, onUpdateGroupQuantity, onUpdateDose, onRemoveItem, onRemoveGroup, onUpdateCustomPrice, onUpdateNote, isViewMode, isReadOnlySection, billingRight }) {
+export default function ItemTable({ items, getPrice, fmt, onUpdateQuantity, onUpdateGroupQuantity, onUpdateDose, onRemoveItem, onRemoveGroup, onUpdateCustomPrice, onUpdateNote, onUpdateItemDrugSubCategory, isViewMode, isReadOnlySection, billingRight }) {
   const readOnly = isViewMode || isReadOnlySection;
   // Sort items so sets stay together
   const sortedItems = [...items].sort((a, b) => {
@@ -30,13 +30,24 @@ export default function ItemTable({ items, getPrice, fmt, onUpdateQuantity, onUp
   sortedItems.forEach(item => {
     if (item.setInstanceId) {
       if (item.setInstanceId !== currentGid) {
-        groups.push({ isGroupHeader: true, gid: item.setInstanceId, name: item.parentSetName, qty: item.quantity });
+        const setSubItems = sortedItems.filter(x => x.setInstanceId === item.setInstanceId);
+        const setTotal = setSubItems.reduce((sum, sub) => sum + getPrice(sub) * sub.quantity, 0);
+        const setQty = Math.min(...setSubItems.map(x => x.quantity));
+
+        groups.push({
+          isGroupHeader: true,
+          gid: item.setInstanceId,
+          name: item.parentSetName,
+          qty: setQty,
+          total: setTotal,
+          drugSubCategory: item.drugSubCategory
+        });
         currentGid = item.setInstanceId;
       }
     } else {
       currentGid = null;
+      groups.push(item);
     }
-    groups.push(item);
   });
 
   return (
@@ -54,31 +65,74 @@ export default function ItemTable({ items, getPrice, fmt, onUpdateQuantity, onUp
         {groups.map((i) => {
           if (i.isGroupHeader) {
             return (
-              <tr key={i.gid} className="bg-slate-50/50 group/set">
-                <td colSpan="2" className="py-2 px-2">
+              <tr key={i.gid} className="bg-indigo-50/50 group/set border-b border-indigo-100">
+                <td colSpan="2" className="py-2.5 px-3">
                   <div className="flex items-center">
                     <span className="bg-indigo-600 text-white text-[0.55rem] font-black px-1.5 py-0.5 rounded mr-2 uppercase shadow-sm">Set</span>
                     <span className="font-bold text-indigo-900">{i.name}</span>
                   </div>
+
+                  {/* Selected right label (shown in print and read-only) */}
+                  {i.drugSubCategory && readOnly && (
+                    <div className="mt-1">
+                      {(() => {
+                        const sc = DRUG_SUB_CATEGORIES.find(s => s.value === i.drugSubCategory);
+                        return sc ? (
+                          <span className={`inline-block text-[0.5rem] font-black px-1.5 py-0.5 rounded border ${sc.color}`}>
+                            {sc.label}
+                          </span>
+                        ) : null;
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Clickable category selectors for pharma items */}
+                  {!readOnly && (
+                    <div className="flex gap-1 mt-2 flex-wrap no-print">
+                      {DRUG_SUB_CATEGORIES.map(sc => {
+                        const isCurrent = (i.drugSubCategory || 'other') === sc.value;
+                        let btnColors = 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100 hover:text-slate-800';
+                        if (isCurrent) {
+                          if (sc.value === 'chemo') btnColors = 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/10';
+                          else if (sc.value === 'targeted') btnColors = 'bg-purple-600 text-white border-purple-600 shadow-sm shadow-purple-500/10';
+                          else if (sc.value === 'gcsf') btnColors = 'bg-green-600 text-white border-green-600 shadow-sm shadow-green-500/10';
+                          else if (sc.value === 'home') btnColors = 'bg-amber-600 text-white border-amber-600 shadow-sm shadow-amber-500/10';
+                          else btnColors = 'bg-slate-700 text-white border-slate-700 shadow-sm shadow-slate-500/10';
+                        }
+                        return (
+                          <button
+                            key={sc.value}
+                            type="button"
+                            onClick={() => onUpdateItemDrugSubCategory?.(i.gid, sc.value)}
+                            className={`px-1.5 py-0.5 rounded border text-[0.55rem] font-bold transition-all cursor-pointer active:scale-95 ${btnColors}`}
+                          >
+                            {sc.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </td>
-                <td className="py-2 text-center">
+                <td className="py-2.5 text-center">
                   {readOnly ? (
-                    <span className="text-center font-bold text-indigo-900">{i.qty} ชุด</span>
+                    <span className="text-center font-bold text-indigo-950">{i.qty} ชุด</span>
                   ) : (
                     <>
                       <div className="flex items-center justify-center gap-1 no-print">
-                        <button onClick={() => onUpdateGroupQuantity(i.gid, -1)} className="bg-white border border-slate-200 rounded p-0.5 text-indigo-400 hover:bg-indigo-50"><Minus size={10} /></button>
+                        <button onClick={() => onUpdateGroupQuantity(i.gid, -1)} className="bg-white border border-slate-200 rounded p-0.5 text-indigo-400 hover:bg-indigo-50 cursor-pointer"><Minus size={10} /></button>
                         <span className="w-6 text-center font-black text-indigo-700">{i.qty}</span>
-                        <button onClick={() => onUpdateGroupQuantity(i.gid, 1)} className="bg-white border border-slate-200 rounded p-0.5 text-indigo-400 hover:bg-indigo-50"><Plus size={10} /></button>
+                        <button onClick={() => onUpdateGroupQuantity(i.gid, 1)} className="bg-white border border-slate-200 rounded p-0.5 text-indigo-400 hover:bg-indigo-50 cursor-pointer"><Plus size={10} /></button>
                       </div>
-                      <span className="hidden print:block text-center font-bold text-indigo-900">{i.qty} ชุด</span>
+                      <span className="hidden print:block text-center font-bold text-indigo-950">{i.qty} ชุด</span>
                     </>
                   )}
                 </td>
-                <td className="py-2 text-right font-black text-indigo-900 px-2"></td>
+                <td className="py-2.5 text-right font-black text-indigo-950 pr-2">
+                  {fmt(i.total)}
+                </td>
                 {!readOnly && (
-                  <td className="py-2 text-center no-print">
-                    <button onClick={() => onRemoveGroup(i.gid)} className="text-slate-300 hover:text-red-500 transition-colors">
+                  <td className="py-2.5 text-center no-print">
+                    <button onClick={() => onRemoveGroup(i.gid)} className="text-slate-300 hover:text-red-500 transition-colors cursor-pointer">
                       <Trash2 size={14} />
                     </button>
                   </td>
@@ -94,14 +148,43 @@ export default function ItemTable({ items, getPrice, fmt, onUpdateQuantity, onUp
                 </div>
                 <div className="text-[0.55rem] text-slate-400 font-mono no-print">{i.itemCode}</div>
                 {/* Subcategory label for pharma items */}
-                {(i.category === 'pharma' || !i.category) && !i.setInstanceId && i.drugSubCategory && (() => {
-                  const sc = DRUG_SUB_CATEGORIES.find(s => s.value === i.drugSubCategory);
-                  return sc ? (
-                    <span className={`inline-block mt-0.5 text-[0.5rem] font-black px-1.5 py-0.5 rounded border ${sc.color}`}>
-                      {sc.label}
-                    </span>
-                  ) : null;
-                })()}
+                <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                  {(i.category === 'pharma' || !i.category) && i.drugSubCategory && (() => {
+                    const sc = DRUG_SUB_CATEGORIES.find(s => s.value === i.drugSubCategory);
+                    return sc ? (
+                      <span className={`inline-block text-[0.5rem] font-black px-1.5 py-0.5 rounded border ${sc.color}`}>
+                        {sc.label}
+                      </span>
+                    ) : null;
+                  })()}
+                </div>
+
+                {/* Clickable category selectors for pharma items */}
+                {(i.category === 'pharma' || !i.category) && !readOnly && (
+                  <div className="flex gap-1 mt-1.5 flex-wrap no-print">
+                    {DRUG_SUB_CATEGORIES.map(sc => {
+                      const isCurrent = (i.drugSubCategory || 'other') === sc.value;
+                      let btnColors = 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100 hover:text-slate-800';
+                      if (isCurrent) {
+                        if (sc.value === 'chemo') btnColors = 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/10';
+                        else if (sc.value === 'targeted') btnColors = 'bg-purple-600 text-white border-purple-600 shadow-sm shadow-purple-500/10';
+                        else if (sc.value === 'gcsf') btnColors = 'bg-green-600 text-white border-green-600 shadow-sm shadow-green-500/10';
+                        else if (sc.value === 'home') btnColors = 'bg-amber-600 text-white border-amber-600 shadow-sm shadow-amber-500/10';
+                        else btnColors = 'bg-slate-700 text-white border-slate-700 shadow-sm shadow-slate-500/10';
+                      }
+                      return (
+                        <button
+                          key={sc.value}
+                          type="button"
+                          onClick={() => onUpdateItemDrugSubCategory?.(i.id, sc.value)}
+                          className={`px-1.5 py-0.5 rounded border text-[0.55rem] font-bold transition-all cursor-pointer active:scale-95 ${btnColors}`}
+                        >
+                          {sc.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </td>
               <td className="py-2 text-center">
                 {readOnly ? (

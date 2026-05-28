@@ -162,29 +162,12 @@ export default function AddNewItem() {
           </div>
 
           <div className="flex flex-col gap-6">
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className={lblCls}>
                   {drugCat === 'nurse' ? 'Service ID (รหัสบริการ)' : 'Drug ID (รหัสยา)'}
                 </label>
                 <input className={inputCls} placeholder={drugCat === 'nurse' ? 'e.g. NRS-001 (ไม่กรอก = auto)' : 'e.g. PHA-001 (ไม่กรอก = auto)'} value={drugCode} onChange={e => setDrugCode(e.target.value)} disabled={!!editItem} />
-              </div>
-              <div>
-                <label className={lblCls}>Category (ประเภท)</label>
-                <div className="flex gap-2">
-                  <select className={`${selCls} ${drugCat === 'pharma' ? 'w-1/2' : 'w-full'}`} value={drugCat} onChange={e => setDrugCat(e.target.value)}>
-                    <option value="pharma">💊 Pharma (ยา)</option>
-                    <option value="nurse">🩺 Nursing Service (ค่าบริการพยาบาล)</option>
-                  </select>
-                  {drugCat === 'pharma' && (
-                    <select className={`${selCls} w-1/2`} value={drugSubCat} onChange={e => setDrugSubCat(e.target.value)}>
-                      <option value="">-- ประเภทยา --</option>
-                      {DRUG_SUB_CATEGORIES.map(sc => (
-                        <option key={sc.value} value={sc.value}>{sc.label}</option>
-                      ))}
-                    </select>
-                  )}
-                </div>
               </div>
               {drugCat !== 'nurse' ? (
                 <div>
@@ -195,6 +178,36 @@ export default function AddNewItem() {
                 <div></div>
               )}
             </div>
+
+            <div>
+              <label className={lblCls}>Category (ประเภท)</label>
+              <div className="flex gap-3 bg-slate-100 p-1 rounded-xl max-w-md">
+                <button
+                  type="button"
+                  onClick={() => setDrugCat('pharma')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg font-bold text-xs transition-all ${
+                    drugCat === 'pharma'
+                      ? 'bg-white text-blue-700 shadow-sm shadow-blue-500/5'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  💊 Pharma (ยา)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDrugCat('nurse')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg font-bold text-xs transition-all ${
+                    drugCat === 'nurse'
+                      ? 'bg-white text-indigo-700 shadow-sm shadow-indigo-500/5'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  🩺 Nursing Service (บริการพยาบาล)
+                </button>
+              </div>
+            </div>
+
+
 
             <div className="mt-4 flex justify-between items-center">
               <div className="flex-1 mr-4">

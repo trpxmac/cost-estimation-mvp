@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { searchMedications, saveEstimation, updateEstimation, getEstimationById, getDoctors, getDiagnoses, getAssessors, addNewDiagnosis, getPatientByHN } from "../api";
+import { searchMedications, saveEstimation, updateEstimation, getEstimationById, getDoctors, getDiagnoses, getAssessors, addNewDiagnosis, getPatientByHN, getAllMedications } from "../api";
 import { useToast } from "../components/Toast";
-import { Pill, Stethoscope } from "lucide-react";
+import { Pill, Stethoscope, Minus, Plus, X } from "lucide-react";
 import { DRUG_SUB_CATEGORIES } from "../components/ItemTable";
 
 // --- Extracted Components ---
@@ -37,7 +37,7 @@ export default function CostEstimator() {
   const [billingRight, setBillingRight] = useState("OPD");
   const [courseCycles, setCourseCycles] = useState(1);
   const [insurance, setInsurance] = useState("Self pay");
-  const [agreement, setAgreement] = useState("agrees");
+  const [agreement, setAgreement] = useState("declines");
   const [freeNote, setFreeNote] = useState("");
 
 
@@ -49,6 +49,12 @@ export default function CostEstimator() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [selectedItems, setSelectedItems] = useState([]);
+  const [allMedications, setAllMedications] = useState([]);
+  const [draftItems, setDraftItems] = useState([]);
+
+  useEffect(() => {
+    getAllMedications().then(setAllMedications);
+  }, []);
 
   // --- Master Data ---
   const [doctors, setDoctors] = useState([]);
@@ -118,7 +124,7 @@ export default function CostEstimator() {
       setBillingRight(r.billingRight || r.patientType || "OPD");
       setCourseCycles(r.courseCycles || 1);
       setInsurance(r.insurance || "Self pay");
-      setAgreement(r.agreement || "agrees");
+      setAgreement(r.agreement || "declines");
       setFreeNote(r.freeNote || "");
 
       setSelectedItems(r.selectedItems || []);
@@ -136,53 +142,96 @@ export default function CostEstimator() {
 
   // --- Search effect ---
   useEffect(() => {
-    searchMedications(searchQuery).then(results => {
-      // Filter results based on role
-      // - pharma: pharma items + item sets
-      // - nurse:  nurse items only (phc01/prep sets belong to pharma)
-      setSearchResults(results.filter(i => {
-        if (currentRole === "pharma") return i.category === "pharma" || (i.isSet && i.category === "pharma");
-        return i.category === "nurse";
-      }));
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    let items = [...allMedications];
+
+    // Filter results based on role
+    items = items.filter(i => {
+      if (currentRole === "pharma") return i.category === "pharma" || (i.isSet && i.category === "pharma");
+      return i.category === "nurse";
     });
-  }, [searchQuery, currentRole]);
+
+    // Filter by search query
+    const q = searchQuery.toLowerCase();
+    items = items.filter(i =>
+      i.Common_name.toLowerCase().includes(q) ||
+      i.itemCode.toLowerCase().includes(q)
+    );
+
+    setSearchResults(items);
+  }, [searchQuery, currentRole, allMedications]);
 
   // --- Cart Handlers ---
-  const handleAddItem = (item) => {
+  const handleAddDraftItem = (item) => {
     if (item.isSet && item.items) {
-      setSelectedItems(prev => {
-        const existingGid = prev.find(i => i.setInstanceId && i.parentSetName === item.Common_name)?.setInstanceId;
-        if (existingGid) {
-          return prev.map(i => i.setInstanceId === existingGid ? { ...i, quantity: i.quantity + 1 } : i);
-        }
+      setDraftItems(prev => {
         const instanceId = Date.now().toString() + Math.random();
         const exploded = item.items.map(subItem => ({
-          ...subItem, id: Date.now().toString() + Math.random(), quantity: subItem.quantity || 1, dose: "", setInstanceId: instanceId, parentSetName: item.Common_name
+          ...subItem, id: Date.now().toString() + Math.random(), quantity: subItem.quantity || 1, dose: "", setInstanceId: instanceId, parentSetName: item.Common_name, drugSubCategory: ""
         }));
         return [...prev, ...exploded];
       });
       toast.success(`เพิ่มชุดรายการ ${item.itemCode} แล้ว (${item.items.length} รายการ)`);
     } else {
-      setSelectedItems(prev => {
+      setDraftItems(prev => {
         const existingIndex = prev.findIndex(i => i.itemCode === item.itemCode && !i.setInstanceId);
         if (existingIndex >= 0) {
           const updated = [...prev];
           updated[existingIndex] = { ...updated[existingIndex], quantity: updated[existingIndex].quantity + 1 };
           return updated;
         }
-        return [...prev, { ...item, id: Date.now().toString() + Math.random(), quantity: 1, dose: "" }];
+        return [...prev, { ...item, id: Date.now().toString() + Math.random(), quantity: 1, dose: "", drugSubCategory: "" }];
       });
     }
     setSearchQuery("");
   };
 
   const updateQuantity = (id, d) => setSelectedItems(prev => prev.map(i => i.id === id ? { ...i, quantity: Math.max(1, i.quantity + d) } : i));
-  const updateGroupQuantity = (gid, d) => setSelectedItems(prev => prev.map(i => i.setInstanceId === gid ? { ...i, quantity: Math.max(1, i.quantity + d) } : i));
+  const updateGroupQuantity = (gid, d) => setSelectedItems(prev => {
+    const setSubItems = prev.filter(i => i.setInstanceId === gid);
+    if (setSubItems.length === 0) return prev;
+    const currentSetQty = Math.min(...setSubItems.map(i => i.quantity));
+    const newSetQty = Math.max(1, currentSetQty + d);
+    const factor = newSetQty / currentSetQty;
+    return prev.map(i => i.setInstanceId === gid ? { ...i, quantity: Math.max(1, Math.round(i.quantity * factor)) } : i);
+  });
   const updateDose = (id, dose) => setSelectedItems(prev => prev.map(i => i.id === id ? { ...i, dose } : i));
   const updateCustomPrice = (id, price) => setSelectedItems(prev => prev.map(i => i.id === id ? { ...i, customPrice: price } : i));
   const updateNote = (id, note) => setSelectedItems(prev => prev.map(i => i.id === id ? { ...i, note } : i));
   const removeItem = (id) => setSelectedItems(prev => prev.filter(i => i.id !== id));
   const removeGroup = (gid) => setSelectedItems(prev => prev.filter(i => i.setInstanceId !== gid));
+  const updateItemDrugSubCategory = (idOrGid, subCat) => setSelectedItems(prev => prev.map(i => 
+    (i.id === idOrGid || i.setInstanceId === idOrGid) ? { ...i, drugSubCategory: subCat } : i
+  ));
+
+  const removeDraftItem = (id) => setDraftItems(prev => prev.filter(i => i.id !== id));
+  const updateDraftItemQuantity = (id, d) => setDraftItems(prev => prev.map(i => i.id === id ? { ...i, quantity: Math.max(1, i.quantity + d) } : i));
+
+  const commitDraftToRight = () => {
+    if (draftItems.length === 0) return;
+    setSelectedItems(prev => {
+      let updated = [...prev];
+      draftItems.forEach(dItem => {
+        if (dItem.setInstanceId) {
+          updated.push(dItem);
+        } else {
+          const idx = updated.findIndex(i => i.itemCode === dItem.itemCode && !i.setInstanceId);
+          if (idx >= 0) {
+            updated[idx] = { ...updated[idx], quantity: updated[idx].quantity + dItem.quantity };
+          } else {
+            updated.push(dItem);
+          }
+        }
+      });
+      return updated;
+    });
+    setDraftItems([]);
+    toast.success("เพิ่มรายการเข้าใบประมาณการแล้ว");
+  };
 
   // --- Inline Diagnosis Add ---
   const handleAddNewDiagnosis = () => {
@@ -295,7 +344,7 @@ export default function CostEstimator() {
   const inputCls = "w-full border border-slate-200 rounded-lg py-2 px-3 text-slate-900 text-sm focus:outline-none focus:border-blue-500";
 
   // --- Shared ItemTable props ---
-  const itemTableProps = { getPrice, fmt, onUpdateQuantity: updateQuantity, onUpdateGroupQuantity: updateGroupQuantity, onUpdateDose: updateDose, onRemoveItem: removeItem, onRemoveGroup: removeGroup, onUpdateCustomPrice: updateCustomPrice, onUpdateNote: updateNote, isViewMode, billingRight };
+  const itemTableProps = { getPrice, fmt, onUpdateQuantity: updateQuantity, onUpdateGroupQuantity: updateGroupQuantity, onUpdateDose: updateDose, onRemoveItem: removeItem, onRemoveGroup: removeGroup, onUpdateCustomPrice: updateCustomPrice, onUpdateNote: updateNote, onUpdateItemDrugSubCategory: updateItemDrugSubCategory, isViewMode, billingRight };
 
   return (
     <>
@@ -337,7 +386,24 @@ export default function CostEstimator() {
           <div className="lg:col-span-5 flex flex-col gap-5 no-print">
             <RoleSwitcher currentRole={currentRole} isAdmin={isAdmin} userRole={userRole} onSwitch={handleRoleSwitch} />
             <PatientInfoForm values={formValues} onChange={handleFormChange} masterData={{ doctors, diagnoses, assessors }} lblCls={lblCls} inputCls={inputCls} onAddDiagnosis={handleAddNewDiagnosis} />
-            <SearchPanel searchQuery={searchQuery} searchResults={searchResults} currentRole={currentRole} getPrice={getPrice} fmt={fmt} onSearchChange={setSearchQuery} onAddItem={handleAddItem} onNavigateAddNew={() => navigate('/add-item', { state: { fromEstimator: true } })} />
+            <SearchPanel
+              searchQuery={searchQuery}
+              searchResults={searchResults}
+              currentRole={currentRole}
+              getPrice={getPrice}
+              fmt={fmt}
+              onSearchChange={setSearchQuery}
+              onAddItem={handleAddDraftItem}
+              onNavigateAddNew={() => navigate('/add-item', { state: { fromEstimator: true } })}
+            />
+            <DraftItemsList
+              items={draftItems}
+              onRemove={removeDraftItem}
+              onUpdateQuantity={updateDraftItemQuantity}
+              onCommit={commitDraftToRight}
+              fmt={fmt}
+              getPrice={getPrice}
+            />
           </div>
         )}
 
@@ -558,5 +624,62 @@ export default function CostEstimator() {
         </div>
       )}
     </>
+  );
+}
+
+function DraftItemsList({ items, onRemove, onUpdateQuantity, onCommit, fmt, getPrice }) {
+  if (items.length === 0) return null;
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col gap-4 animate-in fade-in duration-200">
+      <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+        <h2 className="text-[0.65rem] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+          📦 รายการที่เตรียมเพิ่ม ({items.length} รายการ)
+        </h2>
+        <button
+          onClick={onCommit}
+          className="text-[0.6rem] font-black text-white bg-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-700 active:scale-95 transition-all shadow-sm shadow-blue-500/10 cursor-pointer"
+        >
+          ส่งเข้าใบประมาณการ (ฝั่งขวา)
+        </button>
+      </div>
+
+      <div className="max-h-[250px] overflow-y-auto divide-y divide-slate-50 pr-1">
+        {items.map(item => (
+          <div key={item.id} className="py-2.5 flex justify-between items-center">
+            <div className="flex-1 pr-4">
+              <div className="font-bold text-slate-800 text-xs">{item.Common_name}</div>
+              <div className="text-[0.55rem] text-slate-400 font-mono mt-0.5">{item.itemCode}</div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => onUpdateQuantity(item.id, -1)}
+                  className="bg-slate-50 border border-slate-200 rounded p-0.5 text-slate-400 hover:bg-slate-100 cursor-pointer"
+                >
+                  <Minus size={10} />
+                </button>
+                <span className="w-5 text-center font-bold text-xs text-slate-700">{item.quantity}</span>
+                <button
+                  type="button"
+                  onClick={() => onUpdateQuantity(item.id, 1)}
+                  className="bg-slate-50 border border-slate-200 rounded p-0.5 text-slate-400 hover:bg-slate-100 cursor-pointer"
+                >
+                  <Plus size={10} />
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => onRemove(item.id)}
+                className="text-slate-300 hover:text-red-500 transition-colors p-1 cursor-pointer"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

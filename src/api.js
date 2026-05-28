@@ -184,14 +184,14 @@ export async function getAllMedications() {
     dbCustom.push(...updatedDbCustom);
   }
 
-  const validDbCustom = dbCustom.filter(d => !d.isDeleted);
+  const validDbCustom = dbCustom.filter(d => !d.isDeleted).map(d => ({ ...d, drugSubCategory: "" }));
   let merged = [...validDbCustom];
 
   // 3. Merge static items (skip if in validDbCustom or if the user deleted them)
   const dbCodes = new Set(dbCustom.map(i => i.itemCode)); // Include deleted in Set so static items don't reappear
   staticItems.forEach(item => {
     if (!dbCodes.has(item.itemCode)) {
-      merged.push(item);
+      merged.push({ ...item, drugSubCategory: "" });
     }
   });
 
@@ -204,7 +204,7 @@ export async function getAllMedications() {
         body: JSON.stringify(nrs)
       });
       migratedNurse = true;
-      merged.push(nrs);
+      merged.push({ ...nrs, drugSubCategory: "" });
       dbCodes.add(nrs.itemCode); // Prevent duplicates in memory
     }
   }
@@ -311,7 +311,7 @@ export async function addNewDrug(drugData) {
     OPDTR: Number(drugData.OPDTR) || 0,
     IPDTR: Number(drugData.IPDTR) || 0,
     category: drugData.category || 'pharma',
-    drugSubCategory: drugData.drugSubCategory || '',
+    drugSubCategory: '',
     stock: drugData.stock === null ? null : (drugData.stock !== undefined ? Number(drugData.stock) : 50),
     isSet: !!drugData.isSet,
     items: drugData.items,
