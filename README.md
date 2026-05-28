@@ -1,73 +1,91 @@
-# React + TypeScript + Vite
+# 🏥 Hospital Cost Estimation MVP — ระบบประเมินค่ารักษาพยาบาล
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+ระบบประเมินค่ารักษาพยาบาลผู้ป่วยเคมีบำบัด (Chemotherapy Cost Estimator) และเวชภัณฑ์ทางการแพทย์ พัฒนาด้วย React, Vite, Express และ PostgreSQL
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🎛️ ฟีเจอร์หลักของระบบ (Key Features)
 
-## React Compiler
+1. **ระบบบันทึกข้อมูลทั่วไปผู้ป่วย**
+   * ค้นหาข้อมูลผู้ป่วยจากรหัส HN (Hospital Number) เพื่อดึงข้อมูลชื่อ, แพทย์ประจำตัว, สิทธิ์การรักษา, และ BSA (Body Surface Area) อัตโนมัติ
+   * ปรับแก้จำนวนรอบการรักษา (Course Cycles) และเลือกการตกลงรับการรักษา (`agrees` / `declines`)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+2. **ระบบจัดการยาและเวชภัณฑ์ทางการแพทย์ (Pharmacy & Nursing)**
+   * แยกราคาแสดงตามสิทธิ์การรักษาของผู้ป่วย 4 ประเภทหลัก: 
+     * **OPD**: ผู้ป่วยนอก (คนไทย)
+     * **IPD**: ผู้ป่วยใน (คนไทย)
+     * **OPDTR**: ผู้ป่วยนอก (ต่างชาติ/Expat)
+     * **IPDTR**: ผู้ป่วยใน (ต่างชาติ/Expat)
+   * ค้นหายาและเลือกประเภทย่อยเพื่อคำนวณสัดส่วนค่าใช้จ่าย (Chemo, Targeted, G-CSF, Home Med, อื่นๆ)
+   * จัดการแก้ไขราคายาเป็นรายบรรทัด (Custom Price), ระบุขนาดยา (Dose) และใส่บันทึกย่อ (Note)
 
-## Expanding the ESLint configuration
+3. **ระบบประมาณการรายชุด (Item Set Folding)**
+   * ค้นหาและเพิ่มยา/เวชภัณฑ์ในรูปแบบเซ็ต (Item Set)
+   * การแสดงผลแบบย่อ (Folded) บนใบสั่งเพื่อความสะอาดตา โดยแสดงเฉพาะหัวข้อและยอดรวมทั้งหมดของเซ็ต
+   * ปรับเปลี่ยนปริมาณ (Quantity) หรือสิทธิ์รักษาของเซ็ต จะถูกคำนวณคูณกระจายลงไปยังยารายการย่อยในเซ็ตโดยอัตโนมัติ
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+4. **การเตรียมรายการชั่วคราว (Draft Items Staging)**
+   * รายการยาที่ค้นหาพบจะถูกนำมาพักไว้ที่แถบ "รายการที่กำลังค้นหาเพื่อเพิ่ม" ด้านล่างของกล่องค้นหาก่อน
+   * เมื่อเลือกประเภทย่อยครบถ้วนแล้ว สามารถกด "เพิ่มลงในรายงานหลัก" เพื่อโอนรายการทั้งหมดเข้าสู่หน้าประมาณการค่ารักษา
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+5. **ระบบทำงานแบบไม่มีฐานข้อมูล (No-Database Fallback & Auto-Migration)**
+   * **ทำงานในบราวเซอร์ (Local Storage Mode)**: หากไม่ได้เปิดฐานข้อมูลหรือเชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ระบบจะสลับไปเซฟข้อมูลผู้ป่วย, รายการยาที่เพิ่มใหม่ และใบประมาณการทั้งหมดลงใน Browser Local Storage โดยอัตโนมัติ
+   * **เชื่อมต่อฐานข้อมูลภายหลัง (Auto-Migration)**: เมื่อทำการเปิดเซิร์ฟเวอร์และเชื่อมต่อกับฐานข้อมูลจริง ข้อมูลที่เคยถูกบันทึกค้างไว้ในบราวเซอร์จะถูกส่งขึ้นระบบฐานข้อมูล PostgreSQL อัตโนมัติทันที
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+---
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## 🛠️ Stack เทคโนโลยีที่ใช้งาน
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+* **Frontend**: React 18, Vite, Tailwind CSS v4, Lucide Icons, Vitest (สำหรับ Unit Testing)
+* **Backend**: Node.js, Express, Cors
+* **Database**: PostgreSQL (รองรับ Neon Serverless / Cloud DB)
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+---
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## 🚀 วิธีการติดตั้งและรันระบบ
+
+### 1. วิธีรันแบบไม่ใช้ Database (รันเฉพาะหน้าเว็บ)
+เหมาะสำหรับเพื่อนนำไปทดสอบใช้งาน หรือใช้จำลองหน้าจอโดยเซฟข้อมูลในเครื่องของตนเอง
+1. ติดตั้ง Dependencies:
+   ```bash
+   npm install
+   ```
+2. รันหน้าเว็บ Frontend:
+   ```bash
+   npm run dev
+   ```
+3. เปิดใช้งานผ่านเบราว์เซอร์ตามลิงก์ที่แสดง (เช่น `http://localhost:5173`) *ข้อมูลจะเก็บไว้ที่บราวเซอร์ของเครื่อง*
+
+---
+
+### 2. วิธีรันแบบเต็มระบบ (ใช้งาน Database PostgreSQL)
+1. ติดตั้ง Dependencies:
+   ```bash
+   npm install
+   ```
+2. สร้างไฟล์ `.env` ไว้ที่โฟลเดอร์หลัก (Root) ของโปรเจกต์ และใส่ข้อมูลเชื่อมต่อฐานข้อมูล:
+   ```env
+   DATABASE_URL=postgresql://ชื่อผู้ใช้:รหัสผ่าน@โฮสต์/ชื่อฐานข้อมูล?sslmode=require
+   PORT=5000
+   ```
+3. เปิดเซิร์ฟเวอร์หลังบ้าน (Backend Server):
+   ```bash
+   npm run server
+   ```
+4. เปิดหน้าเว็บหน้าบ้าน (Frontend):
+   ```bash
+   npm run dev
+   ```
+
+---
+
+## 📋 ข้อมูลโครงสร้างตารางและจุดเชื่อมต่อระบบ (Schema & API Reference)
+รายละเอียดการเชื่อมโยงระบบเข้ากับฐานข้อมูล iMed/HIS และรายละเอียด API Endpoints ทั้งหมด สามารถดูเพิ่มเติมได้ที่ไฟล์ [SCHEMA.md](file:///d:/cost-estimation-mvp/SCHEMA.md)
+
+---
+
+## 🧪 การทดสอบโค้ด (Unit Testing)
+โปรเจกต์นี้มี Unit Test ครอบคลุมการคำนวณและ UI Components สามารถรันการตรวจสอบความถูกต้องได้โดย:
+```bash
+npm run test
 ```
