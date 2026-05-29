@@ -51,10 +51,11 @@ export default function SearchPanel({
             {searchResults.map(item => (
               <div
                 key={item.itemCode}
-                className="p-3 flex justify-between items-center hover:bg-slate-100/50 transition-colors"
+                onClick={() => onAddItem(item)}
+                className="p-3 flex justify-between items-center hover:bg-slate-200/50 transition-colors cursor-pointer group"
               >
                 <div className="flex-1 pr-4">
-                  <div className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                  <div className="font-bold text-slate-800 text-xs flex items-center gap-1.5 group-hover:text-blue-700 transition-colors">
                     {item.Common_name}
                     {item.isSet && (
                       <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-600 rounded text-[0.5rem] font-black uppercase tracking-tighter">
@@ -72,8 +73,8 @@ export default function SearchPanel({
                   </div>
                   <button
                     type="button"
-                    onClick={() => onAddItem(item)}
-                    className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-black hover:bg-blue-700 active:scale-95 transition-all shadow-sm flex items-center gap-1 cursor-pointer"
+                    onClick={(e) => { e.stopPropagation(); onAddItem(item); }}
+                    className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-black hover:bg-blue-700 active:scale-95 transition-all shadow-sm flex items-center gap-1 cursor-pointer group-hover:shadow-md"
                   >
                     <Plus size={12} /> เพิ่ม
                   </button>
