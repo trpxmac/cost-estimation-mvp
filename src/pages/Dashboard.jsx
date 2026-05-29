@@ -3,16 +3,207 @@ import { useNavigate } from 'react-router-dom';
 import { getEstimations, getAllMedications } from '../api';
 import {
   Calculator, Users, TrendingUp, FileText,
-  Clock, Activity, DollarSign, ShieldCheck, CheckCircle2, ChevronRight
+  Clock, Activity, DollarSign, ShieldCheck, CheckCircle2, ChevronRight, ArrowUpRight
 } from 'lucide-react';
-import {
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend
-} from 'recharts';
 
 // --- Extracted Components ---
 import StockAlertsPanel from '../components/StockAlertsPanel';
 import DoctorDiagnosisStats from '../components/DoctorDiagnosisStats';
+
+// ── Premium SVG Donut Chart with Hover Tooltip ──────────────────────────────
+function DonutChart({ data, size = 160, stroke = 28, centerLabel, centerSub, emptyText = 'ไม่มีข้อมูล' }) {
+  const [hovered, setHovered] = useState(null); // index of hovered segment
+  const [tooltip, setTooltip] = useState({ x: 0, y: 0 });
+
+  const r = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const total = data.reduce((s, d) => s + d.value, 0);
+
+  if (!total) return (
+    <div className="flex flex-col items-center justify-center" style={{ width: size, height: size }}>
+      <svg width={size} height={size}>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#f1f5f9" strokeWidth={stroke} />
+      </svg>
+      <span className="text-[0.6rem] text-slate-300 font-bold -mt-16">{emptyText}</span>
+    </div>
+  );
+
+  let offset = 0;
+  const segments = data.map((d, i) => {
+    const pct = d.value / total;
+    const dash = pct * circ;
+    const seg = { ...d, dash, offset, pct };
+    offset += dash + 2;
+    return seg;
+  });
+
+  const hoveredSeg = hovered !== null ? segments[hovered] : null;
+
+  // Display in center: show hovered segment info, otherwise default
+  const displayLabel = hoveredSeg ? hoveredSeg.value : centerLabel;
+  const displaySub = hoveredSeg ? hoveredSeg.name : centerSub;
+  const displayColor = hoveredSeg ? hoveredSeg.color : null;
+
+  return (
+    <div className="relative flex items-center justify-center select-none" style={{ width: size, height: size }}>
+      <svg
+        width={size} height={size}
+        style={{ transform: 'rotate(-90deg)', overflow: 'visible' }}
+      >
+        {/* Track */}
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#f1f5f9" strokeWidth={stroke} />
+
+        {segments.map((seg, i) => {
+          const isHov = hovered === i;
+          const isDim = hovered !== null && !isHov;
+          return (
+            <circle
+              key={i}
+              cx={size/2} cy={size/2} r={r}
+              fill="none"
+              stroke={seg.color}
+              strokeWidth={isHov ? stroke + 6 : stroke}
+              strokeDasharray={`${seg.dash - 2} ${circ - seg.dash + 2}`}
+              strokeDashoffset={-seg.offset}
+              strokeLinecap="round"
+              opacity={isDim ? 0.3 : 1}
+              style={{
+                transition: 'stroke-width 0.15s ease, opacity 0.15s ease',
+                cursor: 'pointer',
+                filter: isHov ? `drop-shadow(0 0 6px ${seg.color}88)` : 'none',
+              }}
+              onMouseEnter={e => {
+                setHovered(i);
+                const rect = e.currentTarget.closest('svg').parentElement.getBoundingClientRect();
+                setTooltip({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+              }}
+              onMouseMove={e => {
+                const rect = e.currentTarget.closest('svg').parentElement.getBoundingClientRect();
+                setTooltip({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+              }}
+              onMouseLeave={() => setHovered(null)}
+            />
+          );
+        })}
+      </svg>
+
+      {/* Center label */}
+      <div className="absolute flex flex-col items-center pointer-events-none transition-all duration-150">
+        <span
+          className="text-2xl font-black leading-none transition-colors duration-150"
+          style={{ color: displayColor || '#1e293b' }}
+        >
+          {displayLabel}
+        </span>
+        <span
+          className="text-[0.55rem] font-bold uppercase tracking-widest mt-1 text-center max-w-[70px] truncate transition-colors duration-150"
+          style={{ color: displayColor ? displayColor + 'cc' : '#94a3b8' }}
+        >
+          {displaySub}
+        </span>
+        {hoveredSeg && (
+          <span className="text-[0.6rem] font-black mt-0.5" style={{ color: hoveredSeg.color }}>
+            {Math.round(hoveredSeg.pct * 100)}%
+          </span>
+        )}
+      </div>
+
+      {/* Floating Tooltip */}
+      {hoveredSeg && (
+        <div
+          className="absolute z-50 pointer-events-none"
+          style={{ left: tooltip.x + 12, top: tooltip.y - 40 }}
+        >
+          <div
+            className="flex items-center gap-2 text-white text-[0.65rem] font-bold px-3 py-2 rounded-xl shadow-xl whitespace-nowrap"
+            style={{ background: hoveredSeg.color }}
+          >
+            <span>{hoveredSeg.name}</span>
+            <span className="opacity-80">·</span>
+            <span>{hoveredSeg.value} ราย</span>
+            <span className="opacity-80">·</span>
+            <span>{Math.round(hoveredSeg.pct * 100)}%</span>
+          </div>
+          {/* Arrow */}
+          <div
+            className="w-2 h-2 rotate-45 ml-3 -mt-1"
+            style={{ background: hoveredSeg.color }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Legend Row (interactive — hover highlights matching segment) ──────────────
+function ChartLegend({ data, total, hoveredIndex, onHover }) {
+  return (
+    <div className="space-y-2 w-full">
+      {data.map((d, i) => {
+        const isHov = hoveredIndex === i;
+        const isDim = hoveredIndex !== null && !isHov;
+        return (
+          <div
+            key={i}
+            className="flex items-center gap-2 rounded-lg px-1.5 py-1 cursor-pointer transition-all duration-150"
+            style={{
+              background: isHov ? d.color + '18' : 'transparent',
+              opacity: isDim ? 0.4 : 1,
+            }}
+            onMouseEnter={() => onHover?.(i)}
+            onMouseLeave={() => onHover?.(null)}
+          >
+            <div
+              className="w-2.5 h-2.5 rounded-full flex-shrink-0 transition-transform duration-150"
+              style={{ background: d.color, transform: isHov ? 'scale(1.4)' : 'scale(1)' }}
+            />
+            <span className="text-[0.7rem] text-slate-600 font-medium flex-1 truncate">{d.name}</span>
+            <span className="text-[0.7rem] font-black text-slate-800 font-mono">{d.value}</span>
+            <span
+              className="text-[0.6rem] font-bold w-8 text-right"
+              style={{ color: isHov ? d.color : '#94a3b8' }}
+            >
+              {total ? Math.round(d.value / total * 100) : 0}%
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Donut Card (wires DonutChart + ChartLegend hover state together) ─────────
+function DonutCard({ icon, iconGradient, title, subtitle, data, total, size = 140, stroke = 24, centerLabel, centerSub }) {
+  const [hovered, setHovered] = useState(null);
+  return (
+    <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm overflow-hidden">
+      <div className="flex items-center gap-2.5 mb-5">
+        <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${iconGradient} flex items-center justify-center shadow-sm`}>
+          {icon}
+        </div>
+        <div>
+          <h2 className="font-black text-slate-900 text-sm leading-none">{title}</h2>
+          <p className="text-[0.6rem] text-slate-400 mt-0.5">{subtitle}</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-6">
+        <DonutChart
+          data={data}
+          size={size} stroke={stroke}
+          centerLabel={hovered !== null ? data[hovered]?.value : centerLabel}
+          centerSub={hovered !== null ? data[hovered]?.name : centerSub}
+          externalHover={hovered}
+          onSegmentHover={setHovered}
+        />
+        <div className="flex-1 min-w-0">
+          <ChartLegend data={data} total={total} hoveredIndex={hovered} onHover={setHovered} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -178,14 +369,17 @@ export default function Dashboard() {
   ];
 
   // --- Chart Data ---
+  // High-contrast palette — each color is visually distinct (hue steps ~60°)
+  const PT_COLORS = ['#6366F1', '#F59E0B', '#10B981', '#F43F5E', '#0EA5E9', '#A855F7'];
   const patientTypeData = useMemo(() => {
     const counts = records.reduce((acc, r) => { acc[r.patientType] = (acc[r.patientType] || 0) + 1; return acc; }, {});
-    return Object.entries(counts).map(([name, value]) => ({ name, value }));
+    return Object.entries(counts).map(([name, value], i) => ({ name, value, color: PT_COLORS[i % PT_COLORS.length] }));
   }, [records]);
 
+  const INS_COLORS = ['#0EA5E9', '#F59E0B', '#10B981', '#F43F5E', '#A855F7', '#6366F1'];
   const insuranceData = useMemo(() => {
     const counts = records.reduce((acc, r) => { const k = r.insurance || 'Self pay'; acc[k] = (acc[k] || 0) + 1; return acc; }, {});
-    return Object.entries(counts).map(([name, value]) => ({ name, value }));
+    return Object.entries(counts).map(([name, value], i) => ({ name, value, color: INS_COLORS[i % INS_COLORS.length] }));
   }, [records]);
 
   const agreementData = useMemo(() => {
@@ -195,7 +389,7 @@ export default function Dashboard() {
     }, {});
     return [
       { name: 'ตกลงรักษา', value: counts['ตกลงรักษา'] || 0, color: '#10B981' },
-      { name: 'ไม่ตกลง', value: counts['ไม่ตกลง'] || 0, color: '#EF4444' },
+      { name: 'ไม่ตกลง', value: counts['ไม่ตกลง'] || 0, color: '#F43F5E' },
       { name: 'รอยืนยัน', value: counts['รอยืนยัน'] || 0, color: '#94A3B8' }
     ].filter(i => i.value > 0);
   }, [records]);
@@ -225,11 +419,10 @@ export default function Dashboard() {
     return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
   }, [records, selectedDoctorFilter]);
 
-  const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899'];
-  const INS_COLORS = ['#3B82F6', '#6366F1', '#8B5CF6', '#F59E0B'];
-
   const greetingHour = new Date().getHours();
   const greeting = greetingHour < 12 ? 'อรุณสวัสดิ์' : greetingHour < 17 ? 'สวัสดีตอนบ่าย' : 'สวัสดีตอนเย็น';
+
+  const agreementRate = records.length > 0 ? Math.round((records.filter(r => r.agreement === 'agrees').length / records.length) * 100) : 0;
 
   return (
     <div className="max-w-[1200px] mx-auto">
@@ -286,53 +479,31 @@ export default function Dashboard() {
 
 
 
-      {/* Donut Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Patient Type Donut */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm h-[200px] flex flex-col justify-between">
-            <h2 className="text-[0.7rem] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <Users size={14} /> สัดส่วนประเภทคนไข้
-            </h2>
-            <div className="flex-1 flex items-center justify-center relative">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={patientTypeData} innerRadius={45} outerRadius={60} paddingAngle={5} dataKey="value" animationDuration={1200} animationEasing="ease-out">
-                    {patientTypeData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="absolute flex flex-col items-center">
-                <span className="text-xl font-black text-slate-800">{totalEstimations}</span>
-                <span className="text-[0.5rem] font-bold text-slate-400 uppercase">Total</span>
-              </div>
-            </div>
-          </div>
+      {/* ── Premium Donut Charts ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
 
-          {/* Agreement Rate Donut */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm h-[200px] flex flex-col justify-between">
-            <h2 className="text-[0.7rem] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <CheckCircle2 size={14} /> อัตราการตกลงรักษา
-            </h2>
-            <div className="flex-1 flex items-center justify-center relative">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={agreementData} innerRadius={45} outerRadius={60} paddingAngle={5} dataKey="value" animationDuration={1500} animationEasing="ease-out">
-                    {agreementData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                  </Pie>
-                  <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="absolute flex flex-col items-center">
-                <span className="text-xl font-black text-green-600">
-                  {records.length > 0 ? Math.round((records.filter(r => r.agreement === "agrees").length / records.length) * 100) : 0}%
-                </span>
-                <span className="text-[0.5rem] font-bold text-slate-400 uppercase">Success</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        <DonutCard
+          icon={<Users size={15} className="text-white" />}
+          iconGradient="from-indigo-500 to-blue-600"
+          title="ประเภทคนไข้"
+          subtitle="สัดส่วนจากการประเมินทั้งหมด"
+          data={patientTypeData}
+          total={totalEstimations}
+          centerLabel={totalEstimations}
+          centerSub="รายการ"
+        />
+
+        <DonutCard
+          icon={<CheckCircle2 size={15} className="text-white" />}
+          iconGradient="from-emerald-500 to-teal-600"
+          title="อัตราการตกลงรักษา"
+          subtitle="สถานะการยืนยันจากคนไข้"
+          data={agreementData}
+          total={records.length}
+          centerLabel={`${agreementRate}%`}
+          centerSub="ตกลงรักษา"
+        />
+
       </div>
 
       {/* Doctor + Diagnosis Stats */}
@@ -343,61 +514,74 @@ export default function Dashboard() {
         onSelectDoctor={setSelectedDoctorFilter}
       />
 
-      {/* Insurance + Recent */}
+      {/* ── Insurance + Recent ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
         {/* Insurance Donut */}
-        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm overflow-hidden">
-          <h2 className="font-black text-slate-900 mb-6 flex items-center gap-2">
-            <ShieldCheck size={18} className="text-blue-600" /> สิทธิการรักษา
-          </h2>
-          <div className="h-[230px] w-full flex items-center justify-center relative">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={insuranceData} innerRadius={50} outerRadius={70} paddingAngle={5} dataKey="value" animationDuration={1500} animationEasing="ease-out">
-                  {insuranceData.map((entry, index) => <Cell key={`cell-${index}`} fill={INS_COLORS[index % INS_COLORS.length]} />)}
-                </Pie>
-                <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                <Legend verticalAlign="bottom" iconType="circle" wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="absolute flex flex-col items-center mb-6">
-              <span className="text-lg font-black text-slate-800">{insuranceData.length}</span>
-              <span className="text-[0.45rem] font-bold text-slate-400 uppercase">Rights</span>
-            </div>
-          </div>
-        </div>
+        <DonutCard
+          icon={<ShieldCheck size={15} className="text-white" />}
+          iconGradient="from-blue-500 to-indigo-600"
+          title="สิทธิการรักษา"
+          subtitle="สัดส่วนตามประเภทสิทธิ"
+          data={insuranceData}
+          total={records.length}
+          size={150} stroke={26}
+          centerLabel={insuranceData.length}
+          centerSub="สิทธิ"
+        />
 
         {/* Recent Estimations */}
-        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden flex flex-col">
-          <div className="flex justify-between items-center p-6 border-b border-slate-100">
-            <h2 className="font-black text-slate-900 flex items-center gap-2">
-              <Activity size={18} className="text-blue-600" /> รายการล่าสุด
-            </h2>
-            <button onClick={() => navigate('/patients')} className="p-2 hover:bg-slate-50 rounded-full text-slate-400"><ChevronRight size={20} /></button>
+        <div className="lg:col-span-2 bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden flex flex-col">
+          <div className="flex justify-between items-center px-6 pt-6 pb-4 border-b border-slate-50">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center shadow-sm">
+                <Activity size={15} className="text-white" />
+              </div>
+              <div>
+                <h2 className="font-black text-slate-900 text-sm leading-none">รายการล่าสุด</h2>
+                <p className="text-[0.6rem] text-slate-400 mt-0.5">การประเมินราคาล่าสุด {records.length} รายการ</p>
+              </div>
+            </div>
+            <button
+              onClick={() => navigate('/patients')}
+              className="flex items-center gap-1 text-[0.65rem] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-full transition-colors border border-blue-100"
+            >
+              ดูทั้งหมด <ArrowUpRight size={11} />
+            </button>
           </div>
-          <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
-            {records.slice(0, 4).map(r => {
+          <div className="flex-1 overflow-y-auto divide-y divide-slate-50/80">
+            {records.slice(0, 5).map(r => {
               const isPendingMe = (user.role === 'nurse' && r.status === 'รอพยาบาล') || (user.role === 'pharma' && r.status === 'รอเภสัช') || (user.role === 'admin' && r.status !== 'สมบูรณ์');
               return (
-              <div key={r.id} className="p-4 flex justify-between items-center hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => navigate('/estimator', { state: { editRecord: r } })}>
-                <div>
-                  <div className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                    {r.patientName || "ไม่ระบุชื่อ"}
-                    {isPendingMe && <span className="bg-amber-100 text-amber-700 text-[0.6rem] px-2 py-0.5 rounded-full font-black animate-pulse">รอดำเนินการ</span>}
+              <div
+                key={r.id}
+                className="px-5 py-3.5 flex justify-between items-center hover:bg-slate-50/80 transition-colors cursor-pointer group"
+                onClick={() => navigate('/estimator', { state: { editRecord: r } })}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center text-[0.6rem] font-black text-slate-500 flex-shrink-0">
+                    {(r.patientName || 'N')?.[0]?.toUpperCase()}
                   </div>
-                  <div className="text-[0.65rem] text-slate-400 font-bold">{r.hn} • {r.status}</div>
-                </div>
-                <div className="text-right flex items-center gap-3">
                   <div>
-                    <div className="font-black text-[#0F294D] text-sm">{formatCurrency(r.totalCourse)}</div>
-                    <div className="text-[0.6rem] text-slate-400 font-bold uppercase">{r.patientType}</div>
+                    <div className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                      {r.patientName || 'ไม่ระบุชื่อ'}
+                      {isPendingMe && <span className="bg-amber-100 text-amber-700 text-[0.55rem] px-1.5 py-0.5 rounded-full font-black animate-pulse">รอดำเนินการ</span>}
+                    </div>
+                    <div className="text-[0.6rem] text-slate-400 font-medium mt-0.5">{r.hn} · {r.status}</div>
                   </div>
-                  <ChevronRight size={16} className="text-blue-500" />
+                </div>
+                <div className="text-right flex items-center gap-2">
+                  <div>
+                    <div className="font-black text-slate-900 text-xs">{formatCurrency(r.totalCourse)} <span className="text-slate-400 font-medium text-[0.55rem]">บาท</span></div>
+                    <div className="text-[0.55rem] text-slate-400 font-bold uppercase text-right">{r.patientType}</div>
+                  </div>
+                  <ChevronRight size={14} className="text-slate-300 group-hover:text-blue-500 transition-colors" />
                 </div>
               </div>
             )})}
           </div>
         </div>
+
       </div>
     </div>
   );

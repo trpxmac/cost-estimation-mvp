@@ -24,7 +24,7 @@
 | `bsa`             | NUMERIC      |     | YES      | Body Surface Area (m²)                              |
 | `patient_type`    | VARCHAR(50)  |     | YES      | ประเภทผู้ป่วย: `OPD` / `IPD`                        |
 | `billing_right`   | VARCHAR(50)  |     | YES      | สิทธิ์การรักษา: `OPD` / `IPD` / `OPDTR` / `IPDTR`   |
-| `insurance`       | VARCHAR(100) |     | YES      | ประกัน: `Self pay` / ชื่อบริษัทประกัน                |
+| `insurance`       | VARCHAR(100) |     | YES      | สิทธิการรักษา: `Self pay` / `ประกันไทย` / `ประกันต่างชาติ` / `ประกันสังคม` |
 | `agreement`       | VARCHAR(50)  |     | YES      | การตกลงรักษา: `agrees` / `declines`                  |
 | `appointment_date`| DATE         |     | YES      | วันนัดหมาย                                          |
 | `prep_fee_total`  | NUMERIC      |     | YES      | ค่าเตรียมยาเคมีบำบัดรวม                              |

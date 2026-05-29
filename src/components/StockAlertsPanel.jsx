@@ -45,7 +45,7 @@ export default function StockAlertsPanel({
         const isCritical = stock !== null && stock < alert.needed;
         return { ...alert, stock, shortage, isCritical };
       })
-      .filter(alert => alert.isCritical || orderedItems[alert.code]);
+      .filter(alert => alert.stock !== null && (alert.isCritical || orderedItems[alert.code]));
   }, [stockAlerts, stockMap, orderedItems]);
 
   const hasOverdue = useMemo(() => {
